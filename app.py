@@ -6,6 +6,8 @@ import threading
 import uuid
 from datetime import datetime, timedelta
 import json
+import base64
+import tempfile
 
 app = Flask(__name__)
 CORS(app)
@@ -17,6 +19,32 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 
 # 儲存下載任務狀態
 download_tasks = {}
+
+def get_cookies_file():
+    """從環境變數或檔案獲取 YouTube cookies"""
+    # 優先使用環境變數 (Railway 部署時使用)
+    cookies_b64 = os.environ.get('YOUTUBE_COOKIES_B64')
+    if cookies_b64:
+        try:
+            # 解碼 base64 並寫入臨時檔案
+            cookies_content = base64.b64decode(cookies_b64).decode('utf-8')
+            temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt')
+            temp_file.write(cookies_content)
+            temp_file.close()
+            print(f"✅ 使用環境變數中的 cookies")
+            return temp_file.name
+        except Exception as e:
+            print(f"⚠️ 環境變數 cookies 解碼失敗: {str(e)}")
+    
+    # 備用: 使用本地檔案
+    local_cookies = os.path.join(os.path.dirname(__file__), 'youtube_cookies.txt')
+    if os.path.exists(local_cookies):
+        print(f"✅ 使用本地 cookies 檔案")
+        return local_cookies
+    
+    print("ℹ️ 未找到 cookies,使用無 cookies 模式")
+    return None
+
 
 class DownloadProgress:
     def __init__(self, task_id):
@@ -60,17 +88,46 @@ def download_video(task_id, url, download_type, quality):
     progress_obj = download_tasks[task_id]
     
     try:
-        # 設定 yt-dlp 選項
+        # 獲取 cookies 檔案
+        cookies_file = get_cookies_file()
+        
+        # 設定 yt-dlp 選項 - 加強反機器人檢測
         ydl_opts = {
             'outtmpl': os.path.join(DOWNLOAD_FOLDER, f'{task_id}_%(title)s.%(ext)s'),
             'progress_hooks': [lambda d: progress_hook(d, progress_obj)],
             'quiet': True,
             'no_warnings': True,
-            # 避免 YouTube 機器人檢測
-            'cookiesfrombrowser': None,
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            # 多重策略避免 YouTube 機器人檢測
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web', 'ios'],
+                    'skip': ['hls', 'dash'],
+                }
+            },
+            # 使用更真實的 headers
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            },
+            # 額外的反檢測設定
+            'nocheckcertificate': True,
+            'no_check_certificate': True,
+            'prefer_insecure': False,
+            'age_limit': None,
+            'geo_bypass': True,
+            'sleep_interval': 1,
+            'max_sleep_interval': 3,
         }
+        
+        # 加入 cookies (如果有的話)
+        if cookies_file:
+            ydl_opts['cookiefile'] = cookies_file
+            print(f"🍪 使用 Cookies: {cookies_file}")
         
         if download_type == 'audio':
             # 音訊下載
@@ -184,13 +241,32 @@ def get_video_info():
         return jsonify({'error': '請提供 YouTube 網址'}), 400
     
     try:
+        # 獲取 cookies 檔案
+        cookies_file = get_cookies_file()
+        
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            # 避免 YouTube 機器人檢測
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            # 加強反機器人檢測
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web', 'ios'],
+                    'skip': ['hls', 'dash'],
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
+            'nocheckcertificate': True,
+            'geo_bypass': True,
         }
+        
+        # 加入 cookies (如果有的話)
+        if cookies_file:
+            ydl_opts['cookiefile'] = cookies_file
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
