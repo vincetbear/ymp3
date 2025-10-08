@@ -103,41 +103,26 @@ def download_video(task_id, url, download_type, quality):
             'force_ipv4': True,
         }
         
-        # 根據是否有 cookies 選擇不同策略
-        if cookies_file:
-            # 有 cookies: 明確使用 web 客戶端,並跳過不支援 cookies 的客戶端
-            ydl_opts['cookiefile'] = cookies_file
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': ['web'],  # 只使用 web 客戶端
-                    'skip': ['ios', 'android', 'hls', 'dash'],  # 跳過不支援 cookies 的客戶端
-                }
+        # 暫時禁用 cookies,只使用 iOS 客戶端(測試用)
+        # cookies_file = get_cookies_file()  # 暫時註解掉
+        cookies_file = None  # 強制不使用 cookies
+        
+        # 使用 iOS 客戶端策略(最穩定)
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['ios', 'android', 'web'],
+                'skip': ['hls', 'dash'],
+                'player_skip': ['webpage', 'configs'],
             }
-            ydl_opts['http_headers'] = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Accept-Encoding': 'gzip, deflate, br',
-            }
-            print(f"🍪 使用 Web 客戶端 + Cookies: {cookies_file}")
-        else:
-            # 無 cookies: 使用 iOS 客戶端
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': ['ios', 'android', 'web'],
-                    'skip': ['hls', 'dash'],
-                    'player_skip': ['webpage', 'configs'],
-                }
-            }
-            # iOS 客戶端使用 iOS headers
-            ydl_opts['http_headers'] = {
-                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'X-YouTube-Client-Name': '5',
-                'X-YouTube-Client-Version': '19.29.1',
-            }
-            print("📱 使用 iOS 客戶端模式")
+        }
+        ydl_opts['http_headers'] = {
+            'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'X-YouTube-Client-Name': '5',
+            'X-YouTube-Client-Version': '19.29.1',
+        }
+        print("📱 使用 iOS 客戶端模式 (不使用 cookies)")
         
         if download_type == 'audio':
             # 音訊下載
@@ -302,34 +287,24 @@ def get_video_info():
         if cookies_file:
             # 有 cookies: 明確使用 web 客戶端
             ydl_opts['cookiefile'] = cookies_file
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': ['web'],
-                    'skip': ['ios', 'android', 'hls', 'dash'],
-                }
+        # 暫時禁用 cookies,只使用 iOS 客戶端
+        cookies_file = None
+        
+        # 使用 iOS 客戶端策略(最穩定)
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['ios', 'android', 'web'],
+                'skip': ['hls', 'dash'],
+                'player_skip': ['webpage', 'configs'],
             }
-            ydl_opts['http_headers'] = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Accept-Encoding': 'gzip, deflate, br',
-            }
-        else:
-            # 無 cookies: 使用 iOS 客戶端
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': ['ios', 'android', 'web'],
-                    'skip': ['hls', 'dash'],
-                    'player_skip': ['webpage', 'configs'],
-                }
-            }
-            ydl_opts['http_headers'] = {
-                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'X-YouTube-Client-Name': '5',
-                'X-YouTube-Client-Version': '19.29.1',
-            }
+        }
+        ydl_opts['http_headers'] = {
+            'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'X-YouTube-Client-Name': '5',
+            'X-YouTube-Client-Version': '19.29.1',
+        }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
