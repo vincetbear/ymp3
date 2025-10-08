@@ -41,10 +41,18 @@ def get_cookies_file():
             print(f"⚠️ 環境變數 cookies 解碼失敗: {str(e)}")
     
     # 備用: 使用本地檔案
-    local_cookies = os.path.join(os.path.dirname(__file__), 'youtube_cookies.txt')
-    if os.path.exists(local_cookies):
-        print(f"✅ 使用本地 cookies 檔案")
-        return local_cookies
+    # 嘗試多個可能的 cookies 檔案名稱
+    possible_cookies = [
+        'youtube_cookies.txt',
+        'youtube.com_cookies.txt',
+        'www.youtube.com_cookies.txt'
+    ]
+    
+    for cookie_file in possible_cookies:
+        local_cookies = os.path.join(os.path.dirname(__file__), cookie_file)
+        if os.path.exists(local_cookies):
+            print(f"✅ 使用本地 cookies 檔案: {cookie_file}")
+            return local_cookies
     
     print("ℹ️ 未找到 cookies,使用無 cookies 模式")
     return None
@@ -208,11 +216,22 @@ def download_video(task_id, url, download_type, quality):
             'geo_bypass': True,
         }
         
-        # 使用隨機代理
-        proxy_url = get_random_proxy()
-        if proxy_url:
-            ydl_opts['proxy'] = proxy_url
-            print(f"🔒 使用代理: {get_proxy_display(proxy_url)}")
+        # 使用 cookies (重要: 避免 bot 偵測)
+        cookies_file = get_cookies_file()
+        if cookies_file:
+            ydl_opts['cookiefile'] = cookies_file
+            print(f"🍪 使用 cookies 檔案")
+        
+        # 代理設定 (可選,如果 cookies 足夠則不需要)
+        # 設定為環境變數 USE_PROXY=true 才啟用
+        use_proxy = os.environ.get('USE_PROXY', 'false').lower() == 'true'
+        if use_proxy:
+            proxy_url = get_random_proxy()
+            if proxy_url:
+                ydl_opts['proxy'] = proxy_url
+                # 增加超時時間避免代理太慢
+                ydl_opts['socket_timeout'] = 30
+                print(f"🔒 使用代理: {get_proxy_display(proxy_url)}")
         
         # 使用 Android 客戶端策略
         ydl_opts['extractor_args'] = {
@@ -355,11 +374,20 @@ def get_video_info():
             'geo_bypass': True,
         }
         
-        # 使用隨機代理
-        proxy_url = get_random_proxy()
-        if proxy_url:
-            ydl_opts['proxy'] = proxy_url
-            print(f"🔒 獲取資訊使用代理: {get_proxy_display(proxy_url)}")
+        # 使用 cookies (重要: 避免 bot 偵測)
+        cookies_file = get_cookies_file()
+        if cookies_file:
+            ydl_opts['cookiefile'] = cookies_file
+            print(f"🍪 使用 cookies 檔案")
+        
+        # 代理設定 (可選)
+        use_proxy = os.environ.get('USE_PROXY', 'false').lower() == 'true'
+        if use_proxy:
+            proxy_url = get_random_proxy()
+            if proxy_url:
+                ydl_opts['proxy'] = proxy_url
+                ydl_opts['socket_timeout'] = 30
+                print(f"🔒 獲取資訊使用代理: {get_proxy_display(proxy_url)}")
         
         # Android 客戶端
         ydl_opts['extractor_args'] = {
