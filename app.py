@@ -125,14 +125,10 @@ def download_video(task_id, url, download_type, quality):
         print("📱 使用 iOS 客戶端模式 (不使用 cookies)")
         
         if download_type == 'audio':
-            # 音訊下載
+            # 音訊下載 - 直接下載音訊,不轉換格式(避免需要 ffmpeg)
             ydl_opts.update({
                 'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': quality,
-                }],
+                # 移除 postprocessors 以避免需要 ffmpeg
             })
         else:
             # 影片下載
