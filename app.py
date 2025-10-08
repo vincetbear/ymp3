@@ -187,6 +187,25 @@ def start_download():
     if not url:
         return jsonify({'error': '請提供 YouTube 網址'}), 400
     
+    # 清理和驗證 URL
+    # 移除播放清單參數,只保留影片 ID
+    import re
+    from urllib.parse import urlparse, parse_qs
+    
+    # 提取影片 ID
+    video_id = None
+    if 'youtube.com/watch' in url:
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
+        video_id = query_params.get('v', [None])[0]
+    elif 'youtu.be/' in url:
+        video_id = url.split('youtu.be/')[-1].split('?')[0]
+    
+    if video_id:
+        # 重建乾淨的 URL (不含播放清單)
+        url = f'https://www.youtube.com/watch?v={video_id}'
+        print(f"📹 清理後的 URL: {url}")
+    
     # 建立任務 ID
     task_id = str(uuid.uuid4())[:8]
     
@@ -245,6 +264,23 @@ def get_video_info():
     
     if not url:
         return jsonify({'error': '請提供 YouTube 網址'}), 400
+    
+    # 清理和驗證 URL
+    import re
+    from urllib.parse import urlparse, parse_qs
+    
+    # 提取影片 ID
+    video_id = None
+    if 'youtube.com/watch' in url:
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
+        video_id = query_params.get('v', [None])[0]
+    elif 'youtu.be/' in url:
+        video_id = url.split('youtu.be/')[-1].split('?')[0]
+    
+    if video_id:
+        # 重建乾淨的 URL (不含播放清單)
+        url = f'https://www.youtube.com/watch?v={video_id}'
     
     try:
         # 獲取 cookies 檔案
