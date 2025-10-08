@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1976d2">
+    <meta name="description" content="YouTube 影片/音訊下載工具 - 支援多種品質選擇">
+    
+    <title>YouTube 下載工具</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+    
+    <!-- iOS 支援 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="YT下載">
+    
+    <!-- 樣式 -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎬 YouTube 下載工具</h1>
+            <p class="subtitle">影片 & 音訊下載，支援多種品質</p>
+        </header>
+
+        <!-- 主要內容 -->
+        <main class="main-content">
+            <!-- URL 輸入 -->
+            <div class="input-group">
+                <label for="url-input">YouTube 網址</label>
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="url-input" 
+                        placeholder="貼上 YouTube 影片網址..."
+                        autocomplete="off"
+                    >
+                    <button id="paste-btn" class="icon-btn" title="貼上">📋</button>
+                </div>
+            </div>
+
+            <!-- 下載類型 -->
+            <div class="input-group">
+                <label>下載類型</label>
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" name="type" value="video" checked>
+                        <span>🎥 影片</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="type" value="audio">
+                        <span>🎵 音訊</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 品質選擇 -->
+            <div class="input-group">
+                <label for="quality-select">品質設定</label>
+                <select id="quality-select" class="select-input">
+                    <!-- 影片品質選項 -->
+                    <optgroup label="影片品質" id="video-qualities">
+                        <option value="best" selected>最佳品質 (Best)</option>
+                        <option value="2160p">4K (2160p)</option>
+                        <option value="1440p">2K (1440p)</option>
+                        <option value="1080p">Full HD (1080p)</option>
+                        <option value="720p">HD (720p)</option>
+                        <option value="480p">SD (480p)</option>
+                        <option value="360p">低品質 (360p)</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <!-- 下載按鈕 -->
+            <button id="download-btn" class="btn-primary">
+                🚀 開始下載
+            </button>
+
+            <!-- 進度顯示 -->
+            <div id="progress-section" class="progress-section" style="display: none;">
+                <div class="progress-info">
+                    <div id="status-text" class="status-text">準備中...</div>
+                    <div id="progress-details" class="progress-details"></div>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <button id="download-file-btn" class="btn-success" style="display: none;">
+                    📥 下載檔案
+                </button>
+            </div>
+
+            <!-- 影片資訊 -->
+            <div id="video-info" class="video-info" style="display: none;">
+                <img id="video-thumbnail" src="" alt="縮圖">
+                <div class="video-details">
+                    <h3 id="video-title"></h3>
+                    <p id="video-uploader"></p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>⚠️ 僅供個人學習使用，請遵守相關法律法規</p>
+            <p class="version">v1.0.0 | PWA 版本</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/static/js/app.js"></script>
+    
+    <!-- PWA Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/js/sw.js')
+                    .then(reg => console.log('Service Worker 註冊成功'))
+                    .catch(err => console.log('Service Worker 註冊失敗', err));
+            });
+        }
+    </script>
+</body>
+</html>
