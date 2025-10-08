@@ -49,14 +49,18 @@ def get_cookies_file():
     return None
 
 
-# Invidious 公開實例列表 (按可靠性排序)
+# Invidious 公開實例列表 (按可靠性排序) - 更新到 2025 年仍在運作的實例
 INVIDIOUS_INSTANCES = [
+    'https://inv.nadeko.net',
+    'https://invidious.fdn.fr',
+    'https://inv.tux.pizza',
     'https://invidious.privacyredirect.com',
-    'https://invidious.snopyta.org',
     'https://yewtu.be',
-    'https://invidious.kavin.rocks',
+    'https://invidious.nerdvpn.de',
     'https://vid.puffyan.us',
-    'https://inv.riverside.rocks',
+    'https://invidious.drgns.space',
+    'https://invidious.protokolla.fi',
+    'https://yt.artemislena.eu',
 ]
 
 def extract_video_id(url):
@@ -75,14 +79,23 @@ def get_video_info_from_invidious(video_id):
     for instance in INVIDIOUS_INSTANCES:
         try:
             url = f"{instance}/api/v1/videos/{video_id}"
-            response = requests.get(url, timeout=10)
+            print(f"🔍 嘗試 Invidious 實例: {instance}")
+            response = requests.get(url, timeout=15, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
             if response.status_code == 200:
                 data = response.json()
                 print(f"✅ 成功從 Invidious 獲取資訊: {instance}")
+                print(f"📹 影片標題: {data.get('title', 'Unknown')}")
                 return data
+            else:
+                print(f"⚠️ HTTP {response.status_code} from {instance}")
+        except requests.exceptions.Timeout:
+            print(f"⏱️ Timeout: {instance}")
         except Exception as e:
-            print(f"❌ Invidious 實例失敗 {instance}: {e}")
+            print(f"❌ 錯誤 {instance}: {str(e)[:100]}")
             continue
+    print("❌ 所有 Invidious 實例都失敗")
     return None
 
 def download_from_invidious(video_id, download_type, quality):
@@ -91,18 +104,28 @@ def download_from_invidious(video_id, download_type, quality):
     if not info:
         raise Exception("無法從 Invidious 獲取影片資訊")
     
+    print(f"📊 獲取的格式數量: adaptiveFormats={len(info.get('adaptiveFormats', []))}, formatStreams={len(info.get('formatStreams', []))}")
+    
     if download_type == 'audio':
-        # 獲取音訊串流
+        # 優先使用 adaptiveFormats (分離的音訊)
         audio_formats = [f for f in info.get('adaptiveFormats', []) if f.get('type', '').startswith('audio')]
+        
+        # 如果沒有,嘗試從 formatStreams 獲取
         if not audio_formats:
-            raise Exception("找不到音訊格式")
+            print("⚠️ adaptiveFormats 中沒有音訊,嘗試 formatStreams")
+            audio_formats = info.get('formatStreams', [])
+        
+        if not audio_formats:
+            raise Exception("找不到任何音訊格式")
         
         # 選擇最高品質的音訊
         best_audio = max(audio_formats, key=lambda x: x.get('bitrate', 0))
+        print(f"🎵 選擇音訊格式: bitrate={best_audio.get('bitrate')}, type={best_audio.get('type')}")
+        
         return {
             'url': best_audio.get('url'),
             'title': info.get('title', 'Unknown'),
-            'ext': 'mp4',  # Invidious 通常返回 m4a
+            'ext': 'm4a',
         }
     else:
         # 獲取影片串流
@@ -113,9 +136,15 @@ def download_from_invidious(video_id, download_type, quality):
             formats = [f for f in info.get('formatStreams', []) if str(f.get('resolution', '')).startswith(height)]
         
         if not formats:
-            raise Exception(f"找不到 {quality} 品質的影片")
+            # 回退到 adaptiveFormats
+            formats = info.get('adaptiveFormats', [])
+        
+        if not formats:
+            raise Exception(f"找不到任何影片格式")
         
         best_format = formats[0]
+        print(f"🎬 選擇影片格式: resolution={best_format.get('resolution')}, type={best_format.get('type')}")
+        
         return {
             'url': best_format.get('url'),
             'title': info.get('title', 'Unknown'),
@@ -178,110 +207,57 @@ def download_video(task_id, url, download_type, quality):
             stream_info = download_from_invidious(video_id, download_type, quality)
             download_url = stream_info['url']
             title = stream_info['title']
-            ext = 'mp3' if download_type == 'audio' else 'mp4'
+            ext = stream_info['ext']
             
-            print(f"✅ 從 Invidious 獲取下載連結")
+            if not download_url:
+                raise Exception("下載 URL 為空")
+            
+            print(f"✅ 從 Invidious 獲取下載連結: {download_url[:80]}...")
             progress_obj.title = title
             
             # 下載檔案
             filename = f"{task_id}_{title}.{ext}"
             # 清理檔名中的非法字元
-            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)[:200]  # 限制長度
             filepath = os.path.join(DOWNLOAD_FOLDER, filename)
             
+            print(f"📥 開始下載到: {filename}")
+            
             # 使用 requests 下載
-            response = requests.get(download_url, stream=True, timeout=300)
+            response = requests.get(download_url, stream=True, timeout=600, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Range': 'bytes=0-',  # 支援斷點續傳
+            })
+            
+            if response.status_code not in [200, 206]:
+                raise Exception(f"HTTP {response.status_code}")
+            
             total_size = int(response.headers.get('content-length', 0))
+            print(f"📦 檔案大小: {total_size / 1024 / 1024:.2f} MB")
             
             with open(filepath, 'wb') as f:
                 downloaded = 0
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=1024*1024):  # 1MB chunks
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
                         if total_size > 0:
-                            progress_obj.progress = f"{int(downloaded * 100 / total_size)}%"
+                            percent = int(downloaded * 100 / total_size)
+                            progress_obj.progress = f"{percent}%"
+                            if percent % 10 == 0:  # 每 10% 打印一次
+                                print(f"📊 下載進度: {percent}%")
             
             progress_obj.filename = filename
-            
-            # 如果是音訊且需要轉 MP3
-            if download_type == 'audio' and ext != 'mp3':
-                print("🔄 轉換為 MP3...")
-                progress_obj.status = 'processing'
-                
-                # 使用 ffmpeg 轉換
-                import subprocess
-                mp3_filename = filename.replace(f'.{ext}', '.mp3')
-                mp3_filepath = os.path.join(DOWNLOAD_FOLDER, mp3_filename)
-                
-                cmd = [
-                    'ffmpeg', '-i', filepath,
-                    '-vn', '-ar', '44100', '-ac', '2',
-                    '-b:a', f'{quality}k',
-                    mp3_filepath
-                ]
-                subprocess.run(cmd, check=True, capture_output=True)
-                
-                # 刪除原始檔案
-                os.remove(filepath)
-                progress_obj.filename = mp3_filename
-            
             progress_obj.status = 'completed'
             progress_obj.progress = '100%'
             print(f"✅ 下載完成: {progress_obj.filename}")
             
-        except Exception as e:
-            print(f"❌ Invidious 下載失敗,嘗試使用 yt-dlp: {e}")
-            # 如果 Invidious 失敗,回退到 yt-dlp
+        except Exception as invidious_error:
+            error_msg = str(invidious_error)
+            print(f"❌ Invidious 下載失敗: {error_msg}")
             
-            # 設定 yt-dlp 選項
-            ydl_opts = {
-                'outtmpl': os.path.join(DOWNLOAD_FOLDER, f'{task_id}_%(title)s.%(ext)s'),
-                'progress_hooks': [lambda d: progress_hook(d, progress_obj)],
-                'quiet': True,
-                'no_warnings': True,
-                'nocheckcertificate': True,
-                'geo_bypass': True,
-                'force_ipv4': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android_embedded', 'android', 'ios'],
-                        'skip': ['hls', 'dash', 'translated_subs'],
-                        'player_skip': ['webpage', 'configs', 'js'],
-                    }
-                },
-                'http_headers': {
-                    'User-Agent': 'com.google.android.youtube/19.14.40 (Linux; U; Android 13; en_US)',
-                },
-            }
-            
-            if download_type == 'audio':
-                ydl_opts.update({
-                    'format': 'bestaudio/best',
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': quality,
-                    }],
-                })
-            else:
-                if quality == 'best':
-                    ydl_opts['format'] = 'best'
-                else:
-                    height = quality.replace('p', '')
-                    ydl_opts['format'] = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                progress_obj.title = info.get('title', 'Unknown')
-                
-                for file in os.listdir(DOWNLOAD_FOLDER):
-                    if file.startswith(task_id):
-                        progress_obj.filename = file
-                        break
-            
-            progress_obj.status = 'completed'
-            progress_obj.progress = '100%'
+            # 不再回退到 yt-dlp,因為它會被 YouTube 封鎖
+            raise Exception(f"下載失敗: {error_msg}。Invidious 服務暫時無法使用,請稍後再試。")
         
     except Exception as e:
         progress_obj.status = 'error'
