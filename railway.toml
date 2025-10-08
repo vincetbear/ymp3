@@ -1,0 +1,16 @@
+[build]
+builder = "NIXPACKS"
+
+[build.nixpacksPlan.phases.setup]
+nixPkgs = ["ffmpeg"]
+
+[build.nixpacksPlan.phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[build.nixpacksPlan.phases.build]
+cmds = []
+
+[deploy]
+startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
