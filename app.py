@@ -66,6 +66,10 @@ def download_video(task_id, url, download_type, quality):
             'progress_hooks': [lambda d: progress_hook(d, progress_obj)],
             'quiet': True,
             'no_warnings': True,
+            # 避免 YouTube 機器人檢測
+            'cookiesfrombrowser': None,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
         
         if download_type == 'audio':
@@ -183,6 +187,9 @@ def get_video_info():
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
+            # 避免 YouTube 機器人檢測
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
