@@ -84,13 +84,47 @@ function isYouTubeUrl(url) {
     return patterns.some(pattern => pattern.test(url));
 }
 
+// 清理 YouTube URL (移除播放清單參數)
+function cleanYouTubeUrl(url) {
+    try {
+        const urlObj = new URL(url);
+        let videoId = null;
+        
+        // 從 youtube.com/watch 提取
+        if (urlObj.hostname.includes('youtube.com') && urlObj.pathname === '/watch') {
+            videoId = urlObj.searchParams.get('v');
+        }
+        // 從 youtu.be 提取
+        else if (urlObj.hostname === 'youtu.be') {
+            videoId = urlObj.pathname.substring(1).split('?')[0];
+        }
+        
+        if (videoId) {
+            return `https://www.youtube.com/watch?v=${videoId}`;
+        }
+    } catch (e) {
+        console.error('URL 解析錯誤:', e);
+    }
+    
+    return url;
+}
+
 // 取得影片資訊
 async function getVideoInfo(url) {
+    // 先清理 URL
+    const cleanedUrl = cleanYouTubeUrl(url);
+    
+    // 如果 URL 被清理過,更新輸入框
+    if (cleanedUrl !== url) {
+        urlInput.value = cleanedUrl;
+        console.log('URL 已清理,移除播放清單參數');
+    }
+    
     try {
         const response = await fetch('/api/info', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ url: cleanedUrl })
         });
         
         if (response.ok) {
@@ -112,7 +146,7 @@ function showVideoInfo(data) {
 
 // 開始下載
 downloadBtn.addEventListener('click', async () => {
-    const url = urlInput.value.trim();
+    let url = urlInput.value.trim();
     
     if (!url) {
         alert('請輸入 YouTube 網址');
@@ -123,6 +157,10 @@ downloadBtn.addEventListener('click', async () => {
         alert('請輸入有效的 YouTube 網址');
         return;
     }
+    
+    // 清理 URL (移除播放清單參數)
+    url = cleanYouTubeUrl(url);
+    urlInput.value = url;  // 更新顯示
     
     const type = document.querySelector('input[name="type"]:checked').value;
     const quality = qualitySelect.value;
