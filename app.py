@@ -105,22 +105,17 @@ def download_video(task_id, url, download_type, quality):
         
         # 根據是否有 cookies 選擇不同策略
         if cookies_file:
-            # 有 cookies: 使用 web 客戶端 (iOS/Android 不支援 cookies)
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': ['web'],
-                    'skip': ['hls', 'dash'],
-                }
-            }
+            # 有 cookies: 使用標準模式,讓 yt-dlp 自動選擇最佳客戶端
             ydl_opts['cookiefile'] = cookies_file
-            # Web 客戶端使用標準瀏覽器 headers
+            # 不指定 player_client,使用預設值
+            # 不指定 extractor_args,讓 yt-dlp 自動處理
             ydl_opts['http_headers'] = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Accept-Encoding': 'gzip, deflate, br',
             }
-            print(f"🍪 使用 Web 客戶端 + Cookies: {cookies_file}")
+            print(f"🍪 使用 Cookies 標準模式: {cookies_file}")
         else:
             # 無 cookies: 使用 iOS 客戶端
             ydl_opts['extractor_args'] = {
@@ -265,13 +260,7 @@ def get_video_info():
         
         # 根據是否有 cookies 選擇不同策略
         if cookies_file:
-            # 有 cookies: 使用 web 客戶端
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': ['web'],
-                    'skip': ['hls', 'dash'],
-                }
-            }
+            # 有 cookies: 使用標準模式,讓 yt-dlp 自動選擇最佳客戶端
             ydl_opts['cookiefile'] = cookies_file
             ydl_opts['http_headers'] = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
