@@ -103,26 +103,38 @@ def download_video(task_id, url, download_type, quality):
             'force_ipv4': True,
         }
         
-        # 暫時禁用 cookies,只使用 iOS 客戶端(測試用)
-        # cookies_file = get_cookies_file()  # 暫時註解掉
-        cookies_file = None  # 強制不使用 cookies
+        # 使用多重策略避免 bot 偵測
+        cookies_file = None  # 不使用 cookies
         
-        # 使用 iOS 客戶端策略(最穩定)
+        # 策略 1: 使用 android_embedded 客戶端 (最不容易被偵測)
         ydl_opts['extractor_args'] = {
             'youtube': {
-                'player_client': ['ios', 'android', 'web'],
-                'skip': ['hls', 'dash'],
-                'player_skip': ['webpage', 'configs'],
+                'player_client': ['android_embedded', 'android', 'ios', 'mweb'],
+                'skip': ['hls', 'dash', 'translated_subs'],
+                'player_skip': ['webpage', 'configs', 'js'],
             }
         }
+        
+        # 策略 2: 使用 Android App User-Agent
         ydl_opts['http_headers'] = {
-            'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+            'User-Agent': 'com.google.android.youtube/19.14.40 (Linux; U; Android 13; en_US)',
             'Accept': '*/*',
             'Accept-Language': 'en-US,en;q=0.9',
-            'X-YouTube-Client-Name': '5',
-            'X-YouTube-Client-Version': '19.29.1',
+            'Accept-Encoding': 'gzip, deflate',
+            'X-YouTube-Client-Name': '3',
+            'X-YouTube-Client-Version': '19.14.40',
+            'Origin': 'https://www.youtube.com',
+            'Referer': 'https://www.youtube.com/',
         }
-        print("📱 使用 iOS 客戶端模式 (不使用 cookies)")
+        
+        # 策略 3: 延遲和重試
+        ydl_opts['sleep_interval'] = 1
+        ydl_opts['max_sleep_interval'] = 3
+        ydl_opts['sleep_interval_requests'] = 1
+        ydl_opts['retries'] = 5
+        ydl_opts['fragment_retries'] = 5
+        
+        print("🤖 使用 Android Embedded 客戶端模式 (多重反偵測策略)")
         
         if download_type == 'audio':
             # 音訊下載並轉換為 MP3
@@ -272,9 +284,6 @@ def get_video_info():
         url = f'https://www.youtube.com/watch?v={video_id}'
     
     try:
-        # 獲取 cookies 檔案
-        cookies_file = get_cookies_file()
-        
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
@@ -283,27 +292,23 @@ def get_video_info():
             'force_ipv4': True,
         }
         
-        # 根據是否有 cookies 選擇不同策略
-        if cookies_file:
-            # 有 cookies: 明確使用 web 客戶端
-            ydl_opts['cookiefile'] = cookies_file
-        # 暫時禁用 cookies,只使用 iOS 客戶端
-        cookies_file = None
-        
-        # 使用 iOS 客戶端策略(最穩定)
+        # 使用與下載相同的 Android Embedded 策略
         ydl_opts['extractor_args'] = {
             'youtube': {
-                'player_client': ['ios', 'android', 'web'],
-                'skip': ['hls', 'dash'],
-                'player_skip': ['webpage', 'configs'],
+                'player_client': ['android_embedded', 'android', 'ios', 'mweb'],
+                'skip': ['hls', 'dash', 'translated_subs'],
+                'player_skip': ['webpage', 'configs', 'js'],
             }
         }
         ydl_opts['http_headers'] = {
-            'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+            'User-Agent': 'com.google.android.youtube/19.14.40 (Linux; U; Android 13; en_US)',
             'Accept': '*/*',
             'Accept-Language': 'en-US,en;q=0.9',
-            'X-YouTube-Client-Name': '5',
-            'X-YouTube-Client-Version': '19.29.1',
+            'Accept-Encoding': 'gzip, deflate',
+            'X-YouTube-Client-Name': '3',
+            'X-YouTube-Client-Version': '19.14.40',
+            'Origin': 'https://www.youtube.com',
+            'Referer': 'https://www.youtube.com/',
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
