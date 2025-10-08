@@ -11,6 +11,7 @@ import tempfile
 import requests
 import re
 from urllib.parse import urlparse, parse_qs
+from proxy_config import get_random_proxy, get_proxy_display
 
 app = Flask(__name__)
 CORS(app)
@@ -22,13 +23,6 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 
 # 儲存下載任務狀態
 download_tasks = {}
-
-# 代理設定 - 從環境變數讀取
-PROXY_URL = os.environ.get('PROXY_URL', None)
-if PROXY_URL:
-    print(f"🔒 使用代理伺服器: {PROXY_URL.split('@')[1] if '@' in PROXY_URL else PROXY_URL}")
-else:
-    print("⚠️ 未設定代理,可能會遇到 YouTube bot 偵測")
 
 def get_cookies_file():
     """從環境變數或檔案獲取 YouTube cookies"""
@@ -214,10 +208,11 @@ def download_video(task_id, url, download_type, quality):
             'geo_bypass': True,
         }
         
-        # 如果有設定代理,使用代理
-        if PROXY_URL:
-            ydl_opts['proxy'] = PROXY_URL
-            print(f"� 使用代理下載")
+        # 使用隨機代理
+        proxy_url = get_random_proxy()
+        if proxy_url:
+            ydl_opts['proxy'] = proxy_url
+            print(f"🔒 使用代理: {get_proxy_display(proxy_url)}")
         
         # 使用 Android 客戶端策略
         ydl_opts['extractor_args'] = {
@@ -278,8 +273,6 @@ def start_download():
     
     # 清理和驗證 URL
     # 移除播放清單參數,只保留影片 ID
-    import re
-    from urllib.parse import urlparse, parse_qs
     
     # 提取影片 ID
     video_id = None
@@ -362,9 +355,11 @@ def get_video_info():
             'geo_bypass': True,
         }
         
-        # 如果有代理,使用代理
-        if PROXY_URL:
-            ydl_opts['proxy'] = PROXY_URL
+        # 使用隨機代理
+        proxy_url = get_random_proxy()
+        if proxy_url:
+            ydl_opts['proxy'] = proxy_url
+            print(f"🔒 獲取資訊使用代理: {get_proxy_display(proxy_url)}")
         
         # Android 客戶端
         ydl_opts['extractor_args'] = {
