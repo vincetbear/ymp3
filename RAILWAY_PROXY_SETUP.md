@@ -20,7 +20,7 @@
 
 **變數值:**
 ```
-http://vincetbear@gmail.com:2Giiiali@proxy.webshare.io:80
+http://ellpsmsi:5x76u62w6hou@proxy.webshare.io:80
 ```
 
 > ⚠️ **重要:** 貼上時請確保格式正確,沒有多餘的空格
@@ -80,7 +80,7 @@ http://vincetbear@gmail.com:2Giiiali@proxy.webshare.io:80
 您的 Railway 專案應該有以下環境變數:
 
 ```
-PROXY_URL=http://vincetbear@gmail.com:2Giiiali@proxy.webshare.io:80
+PROXY_URL=http://ellpsmsi:5x76u62w6hou@proxy.webshare.io:80
 ```
 
 其他舊的環境變數可以刪除:
