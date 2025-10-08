@@ -242,9 +242,14 @@ def download_video(task_id, url, download_type, quality):
         
         # 根據下載類型設定格式
         if download_type == 'audio':
-            # 音訊下載 - 不轉 MP3 (避免 ffmpeg 依賴)
+            # 音訊下載 - 轉換成 MP3
             ydl_opts['format'] = 'bestaudio/best'
-            print(f"🎵 下載音訊格式")
+            ydl_opts['postprocessors'] = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }]
+            print(f"🎵 下載音訊格式並轉換為 MP3")
         else:
             # 影片下載
             if quality == 'best':
