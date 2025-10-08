@@ -91,30 +91,33 @@ def download_video(task_id, url, download_type, quality):
         # 獲取 cookies 檔案
         cookies_file = get_cookies_file()
         
-        # 設定 yt-dlp 選項 - 加強反機器人檢測
+        # 設定 yt-dlp 選項 - 2024 最新策略
         ydl_opts = {
             'outtmpl': os.path.join(DOWNLOAD_FOLDER, f'{task_id}_%(title)s.%(ext)s'),
             'progress_hooks': [lambda d: progress_hook(d, progress_obj)],
             'quiet': True,
             'no_warnings': True,
-            # 多重策略避免 YouTube 機器人檢測
+            # 最新的 YouTube 提取策略 (2024.12)
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web', 'ios'],
+                    # 優先使用這些客戶端 (按順序嘗試)
+                    'player_client': ['ios', 'android', 'web'],
+                    # 跳過有問題的格式
                     'skip': ['hls', 'dash'],
+                    # 使用 OAuth 認證 (如果有 cookies)
+                    'player_skip': ['webpage', 'configs'],
                 }
             },
-            # 使用更真實的 headers
+            # 完整的瀏覽器模擬
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
+                'X-YouTube-Client-Name': '5',
+                'X-YouTube-Client-Version': '19.29.1',
             },
-            # 額外的反檢測設定
+            # 進階設定
             'nocheckcertificate': True,
             'no_check_certificate': True,
             'prefer_insecure': False,
@@ -122,6 +125,10 @@ def download_video(task_id, url, download_type, quality):
             'geo_bypass': True,
             'sleep_interval': 1,
             'max_sleep_interval': 3,
+            # 允許未經驗證的 SSL
+            'legacy_server_connect': False,
+            # 強制使用 IPv4
+            'force_ipv4': True,
         }
         
         # 加入 cookies (如果有的話)
@@ -247,21 +254,25 @@ def get_video_info():
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            # 加強反機器人檢測
+            # 最新的 YouTube 提取策略
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web', 'ios'],
+                    'player_client': ['ios', 'android', 'web'],
                     'skip': ['hls', 'dash'],
+                    'player_skip': ['webpage', 'configs'],
                 }
             },
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
+                'X-YouTube-Client-Name': '5',
+                'X-YouTube-Client-Version': '19.29.1',
             },
             'nocheckcertificate': True,
             'geo_bypass': True,
+            'force_ipv4': True,
         }
         
         # 加入 cookies (如果有的話)
