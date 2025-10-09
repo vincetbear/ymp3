@@ -1,8 +1,13 @@
 [phases.setup]
-nixPkgs = ["python39", "ffmpeg-full"]
+nixPkgs = ["python39"]
+aptPkgs = ["ffmpeg"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = [
+    "pip install -r requirements.txt",
+    "ffmpeg -version || echo 'WARNING: FFmpeg not found!'",
+    "chmod +x start.sh"
+]
 
 [start]
-cmd = "gunicorn app_pytubefix:app --bind 0.0.0.0:$PORT"
+cmd = "./start.sh"
