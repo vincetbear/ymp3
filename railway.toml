@@ -1,7 +1,0 @@
-# 使用 Docker 建置以確保 ffmpeg 正確安裝
-[build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-
-[deploy]
-startCommand = "gunicorn --bind 0.0.0.0:8080 --workers 2 --timeout 300 app:app"
