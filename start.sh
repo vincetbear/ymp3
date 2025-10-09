@@ -42,4 +42,4 @@ echo "=========================================="
 echo ""
 
 # 啟動 Gunicorn
-exec gunicorn app_pytubefix:app --bind 0.0.0.0:$PORT --workers 2 --timeout 300
+exec gunicorn app_pytubefix:app --bind 0.0.0.0:$PORT --workers 1 --timeout 300

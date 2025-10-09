@@ -16,4 +16,4 @@ RUN mkdir -p downloads
 
 EXPOSE 8080
 
-CMD gunicorn app_pytubefix:app --bind 0.0.0.0:$PORT --workers 2 --timeout 300
+CMD gunicorn app_pytubefix:app --bind 0.0.0.0:$PORT --workers 1 --timeout 300
