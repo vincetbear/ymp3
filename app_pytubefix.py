@@ -14,10 +14,15 @@ import subprocess
 app = Flask(__name__)
 CORS(app)
 
-# 設定下載資料夾
-DOWNLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'downloads')
+# 設定下載資料夾 (使用絕對路徑)
+DOWNLOAD_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), 'downloads'))
+print(f'📁 下載目錄: {DOWNLOAD_FOLDER}')
+
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
+    print(f'✅ 創建下載目錄: {DOWNLOAD_FOLDER}')
+else:
+    print(f'✅ 下載目錄已存在: {DOWNLOAD_FOLDER}')
 
 # 儲存下載任務狀態
 download_tasks = {}
@@ -194,9 +199,14 @@ def download_video_thread(task_id, url, download_type, quality):
         # 下載完成
         download_tasks[task_id]['status'] = 'completed'
         download_tasks[task_id]['message'] = '下載完成'
-        download_tasks[task_id]['file_path'] = file_path
+        download_tasks[task_id]['file_path'] = os.path.abspath(file_path)  # 使用絕對路徑
         download_tasks[task_id]['filename'] = os.path.basename(file_path)
         download_tasks[task_id]['progress'] = 100
+        
+        print(f'✅ 任務完成!')
+        print(f'   檔案: {download_tasks[task_id]["filename"]}')
+        print(f'   路徑: {download_tasks[task_id]["file_path"]}')
+        print(f'   存在: {os.path.exists(download_tasks[task_id]["file_path"])}')
         
     except Exception as e:
         download_tasks[task_id]['status'] = 'error'
@@ -312,23 +322,45 @@ def get_progress(task_id):
 @app.route('/api/file/<task_id>')
 def download_file(task_id):
     """下載檔案"""
+    print(f'📥 下載請求: task_id={task_id}')
+    
     if task_id not in download_tasks:
+        print(f'❌ 任務不存在: {task_id}')
+        print(f'   現有任務: {list(download_tasks.keys())}')
         return jsonify({'error': '任務不存在'}), 404
     
     task = download_tasks[task_id]
+    print(f'📋 任務狀態: {task["status"]}')
     
     if task['status'] != 'completed':
-        return jsonify({'error': '下載未完成'}), 400
+        print(f'⚠️ 下載未完成: status={task["status"]}')
+        return jsonify({'error': f'下載未完成 (狀態: {task["status"]})', 'status': task['status']}), 400
     
     file_path = task.get('file_path')
-    if not file_path or not os.path.exists(file_path):
-        return jsonify({'error': '檔案不存在'}), 404
+    print(f'📁 檔案路徑: {file_path}')
     
-    return send_file(
-        file_path,
-        as_attachment=True,
-        download_name=task['filename']
-    )
+    if not file_path:
+        print(f'❌ 檔案路徑為空')
+        return jsonify({'error': '檔案路徑不存在'}), 404
+    
+    if not os.path.exists(file_path):
+        print(f'❌ 檔案不存在: {file_path}')
+        print(f'   downloads 目錄內容: {os.listdir(DOWNLOAD_FOLDER) if os.path.exists(DOWNLOAD_FOLDER) else "目錄不存在"}')
+        return jsonify({'error': f'檔案不存在: {os.path.basename(file_path)}'}), 404
+    
+    print(f'✅ 開始傳送檔案: {task["filename"]}')
+    
+    try:
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=task['filename']
+        )
+    except Exception as e:
+        print(f'❌ 傳送檔案失敗: {e}')
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'傳送檔案失敗: {str(e)}'}), 500
 
 
 def cleanup_old_files():
