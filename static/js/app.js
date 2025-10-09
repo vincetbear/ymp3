@@ -230,24 +230,24 @@ async function checkProgress() {
 // 更新進度顯示
 function updateProgress(data) {
     const statusMap = {
-        'preparing': '準備中...',
+        'pending': '準備中...',
         'downloading': '下載中...',
-        'processing': '處理中...',
-        'completed': '完成！',
+        'converting': '轉換為 MP3...',
+        'completed': '完成!',
         'error': '錯誤'
     };
     
-    statusText.textContent = statusMap[data.status] || data.status;
+    statusText.textContent = statusMap[data.status] || data.message || data.status;
     
     if (data.status === 'downloading') {
-        progressDetails.textContent = `${data.progress} | 速度: ${data.speed} | 剩餘: ${data.eta}`;
-        const percent = parseFloat(data.progress) || 0;
+        const percent = data.progress || 0;
+        progressDetails.textContent = `進度: ${percent.toFixed(1)}%`;
         progressBar.style.width = percent + '%';
-    } else if (data.status === 'processing') {
-        progressDetails.textContent = '正在轉換格式...';
-        progressBar.style.width = '100%';
+    } else if (data.status === 'converting') {
+        progressDetails.textContent = '正在轉換為 MP3 格式...';
+        progressBar.style.width = '95%';
     } else if (data.status === 'completed') {
-        progressDetails.textContent = data.title;
+        progressDetails.textContent = data.title || '下載完成!';
         progressBar.style.width = '100%';
     }
 }
@@ -256,7 +256,7 @@ function updateProgress(data) {
 function showDownloadButton() {
     downloadFileBtn.style.display = 'block';
     downloadFileBtn.onclick = () => {
-        window.location.href = `/api/download/${currentTaskId}`;
+        window.location.href = `/api/file/${currentTaskId}`;
         
         // 下載後重置（延遲 2 秒）
         setTimeout(resetUI, 2000);
