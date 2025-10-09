@@ -48,3 +48,9 @@ Thumbs.db
 # Cookies - 包含敏感資訊,不應該推送到 GitHub
 *cookies*.txt
 cookies_base64.txt
+
+# 測試檔案
+test_*.py
+test_downloads/
+PYTUBEFIX_SUCCESS.md
+RAILWAY_DEPLOYMENT.md

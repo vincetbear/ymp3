@@ -5,4 +5,4 @@ nixPkgs = ["python39", "ffmpeg-full"]
 cmds = ["pip install -r requirements.txt"]
 
 [start]
-cmd = "gunicorn app:app --bind 0.0.0.0:$PORT"
+cmd = "gunicorn app_pytubefix:app --bind 0.0.0.0:$PORT"
