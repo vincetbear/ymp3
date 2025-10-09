@@ -36,7 +36,28 @@ def convert_to_mp3(input_file, bitrate='192k'):
     """
     output_file = os.path.splitext(input_file)[0] + '.mp3'
     
-    print(f'🎵 轉換為 MP3: {os.path.basename(input_file)}')
+    print(f'🎵 開始轉換為 MP3: {os.path.basename(input_file)}')
+    print(f'   輸入檔案: {input_file}')
+    print(f'   輸出檔案: {output_file}')
+    print(f'   位元率: {bitrate}')
+    
+    # 檢查 FFmpeg 是否可用
+    try:
+        ffmpeg_check = subprocess.run(
+            ['ffmpeg', '-version'], 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            timeout=5
+        )
+        if ffmpeg_check.returncode != 0:
+            raise Exception('FFmpeg 未正確安裝')
+        print('✅ FFmpeg 可用')
+    except FileNotFoundError:
+        print('❌ 錯誤: 找不到 FFmpeg')
+        return input_file
+    except Exception as e:
+        print(f'❌ FFmpeg 檢查失敗: {e}')
+        return input_file
     
     cmd = [
         'ffmpeg',
@@ -50,19 +71,43 @@ def convert_to_mp3(input_file, bitrate='192k'):
     ]
     
     try:
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        print(f'🔄 執行轉換命令...')
+        result = subprocess.run(
+            cmd, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            check=True,
+            timeout=300  # 5 分鐘超時
+        )
         
         if os.path.exists(output_file):
+            output_size = os.path.getsize(output_file)
+            input_size = os.path.getsize(input_file)
+            
             # 刪除原始檔案
             os.remove(input_file)
-            print(f'✅ MP3 轉換完成: {os.path.basename(output_file)}')
+            
+            print(f'✅ MP3 轉換完成!')
+            print(f'   原始大小: {input_size / (1024*1024):.2f} MB')
+            print(f'   MP3 大小: {output_size / (1024*1024):.2f} MB')
+            print(f'   檔案名稱: {os.path.basename(output_file)}')
+            
             return output_file
         else:
-            raise Exception('MP3 檔案產生失敗')
+            raise Exception('MP3 檔案未產生')
             
+    except subprocess.TimeoutExpired:
+        print(f'❌ MP3 轉換超時 (5 分鐘)')
+        return input_file
+    except subprocess.CalledProcessError as e:
+        print(f'❌ MP3 轉換失敗 (FFmpeg 錯誤)')
+        print(f'   返回碼: {e.returncode}')
+        print(f'   錯誤輸出: {e.stderr.decode("utf-8", errors="ignore")[:500]}')
+        return input_file
     except Exception as e:
         print(f'❌ MP3 轉換失敗: {e}')
-        # 如果轉換失敗,返回原始檔案
+        import traceback
+        traceback.print_exc()
         return input_file
 
 
@@ -125,12 +170,26 @@ def download_video_thread(task_id, url, download_type, quality):
         
         # 下載
         file_path = stream.download(output_path=DOWNLOAD_FOLDER)
+        print(f'✅ 下載完成: {os.path.basename(file_path)}')
+        print(f'   檔案大小: {os.path.getsize(file_path) / (1024*1024):.2f} MB')
+        print(f'   檔案格式: {os.path.splitext(file_path)[1]}')
         
         # 如果是音訊,轉換為 MP3
         if download_type == 'audio':
+            print(f'🔄 音訊模式 - 開始轉換為 MP3...')
             download_tasks[task_id]['status'] = 'converting'
             download_tasks[task_id]['message'] = '正在轉換為 MP3...'
+            download_tasks[task_id]['progress'] = 95
+            
+            original_file = file_path
             file_path = convert_to_mp3(file_path)
+            
+            # 檢查是否成功轉換
+            if file_path.endswith('.mp3'):
+                print(f'✅ MP3 轉換成功!')
+            else:
+                print(f'⚠️ 警告: 轉換失敗,返回原始檔案 {os.path.splitext(file_path)[1]}')
+                download_tasks[task_id]['message'] = f'下載完成 (轉換失敗,格式: {os.path.splitext(file_path)[1]})'
         
         # 下載完成
         download_tasks[task_id]['status'] = 'completed'
