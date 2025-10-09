@@ -16,9 +16,17 @@ if command -v ffmpeg &> /dev/null; then
     echo "✅ FFmpeg 已安裝"
     ffmpeg -version | head -n 1
 else
-    echo "❌ 錯誤: 找不到 FFmpeg!"
-    echo "請檢查 nixpacks.toml 中的 aptPkgs 配置"
-    exit 1
+    echo "⚠️ FFmpeg 未找到,嘗試安裝..."
+    apt-get update && apt-get install -y ffmpeg || echo "❌ FFmpeg 安裝失敗"
+    
+    # 再次檢查
+    if command -v ffmpeg &> /dev/null; then
+        echo "✅ FFmpeg 安裝成功"
+        ffmpeg -version | head -n 1
+    else
+        echo "❌ 錯誤: 無法安裝 FFmpeg!"
+        echo "⚠️ 音訊下載將只能保存為 m4a 格式"
+    fi
 fi
 
 # 檢查必要的 Python 套件
