@@ -259,7 +259,12 @@ function showDownloadButton() {
         window.location.href = `/api/file/${currentTaskId}`;
         
         // 下載後重置（延遲 2 秒）
-        setTimeout(resetUI, 2000);
+        setTimeout(() => {
+            resetUI();
+            // 清空輸入框和影片資訊
+            urlInput.value = '';
+            videoInfo.style.display = 'none';
+        }, 2000);
     };
 }
 
