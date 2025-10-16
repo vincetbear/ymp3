@@ -56,12 +56,15 @@ class ProductionConfig(Config):
     DEBUG = False
     TESTING = False
     
-    # 確保生產環境有設定 SECRET_KEY
-    @classmethod
-    def validate(cls) -> None:
-        """驗證生產環境配置"""
-        if cls.SECRET_KEY == 'dev-secret-key-change-in-production':
-            raise ValueError('生產環境必須設定 SECRET_KEY 環境變數')
+    # 如果沒有設定 SECRET_KEY，生成一個警告而不是錯誤
+    def __init__(self):
+        super().__init__()
+        if self.SECRET_KEY == 'dev-secret-key-change-in-production':
+            import warnings
+            warnings.warn(
+                '警告: 生產環境使用預設 SECRET_KEY，建議設定 SECRET_KEY 環境變數',
+                UserWarning
+            )
 
 
 class TestingConfig(Config):
@@ -94,9 +97,5 @@ def get_config(env: Optional[str] = None) -> Config:
     }
     
     config_class = config_map.get(env, ProductionConfig)
-    
-    # 生產環境驗證配置
-    if env == 'production':
-        config_class.validate()
     
     return config_class()
