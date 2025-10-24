@@ -36,24 +36,20 @@
 
 ### Web 版架構
 
-```
+```txt
 Flask 應用程式
-├── 前端 (PWA)
-│   ├── HTML/CSS/JavaScript
-│   ├── Service Worker
-│   └── Manifest (PWA 設定)
+├── 前端 (HTML/CSS/JavaScript)
+│   ├── 影片資訊預覽
+│   ├── 即時進度顯示
+│   └── 自動清空輸入框
 ├── 後端 (Flask API)
 │   ├── /api/info (獲取影片資訊)
 │   ├── /api/download (下載任務)
 │   ├── /api/progress/<task_id> (進度查詢)
-│   └── /api/file/<filename> (檔案下載)
-├── 下載引擎
-│   ├── yt-dlp (YouTube 下載)
-│   ├── FFmpeg (MP3 轉檔)
-│   └── Cookies 認證
-└── 代理系統 (可選)
-    ├── WebShare 代理池
-    └── 隨機 IP 輪替
+│   └── /api/file/<task_id> (檔案下載)
+└── 下載引擎
+    ├── pytubefix (YouTube 下載)
+    └── FFmpeg (MP3 轉檔)
 ```
 
 **核心技術**:
