@@ -127,9 +127,12 @@ async function getVideoInfo(url) {
             body: JSON.stringify({ url: cleanedUrl })
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            showVideoInfo(data);
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            showVideoInfo(result.data);
+        } else if (result.error) {
+            console.error('取得影片資訊失敗:', result.error.message);
         }
     } catch (err) {
         console.error('無法取得影片資訊:', err);
@@ -178,13 +181,20 @@ downloadBtn.addEventListener('click', async () => {
             body: JSON.stringify({ url, type, quality })
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            currentTaskId = data.task_id;
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            currentTaskId = result.data.task_id;
             startProgressCheck();
-        } else {
-            const error = await response.json();
-            alert('下載失敗: ' + error.error);
+        } else if (result.error) {
+            const errorMsg = result.error.message || '下載失敗';
+            
+            // 處理速率限制錯誤
+            if (result.error.code === 'RATE_LIMIT_EXCEEDED') {
+                alert('請求過於頻繁，請稍後再試');
+            } else {
+                alert('下載失敗: ' + errorMsg);
+            }
             resetUI();
         }
     } catch (err) {
@@ -208,9 +218,10 @@ async function checkProgress() {
     
     try {
         const response = await fetch(`/api/progress/${currentTaskId}`);
+        const result = await response.json();
         
-        if (response.ok) {
-            const data = await response.json();
+        if (result.success && result.data) {
+            const data = result.data;
             updateProgress(data);
             
             if (data.status === 'completed') {
@@ -218,9 +229,11 @@ async function checkProgress() {
                 showDownloadButton();
             } else if (data.status === 'error') {
                 clearInterval(progressCheckInterval);
-                alert('下載失敗: ' + data.error);
+                alert('下載失敗: ' + (data.message || '未知錯誤'));
                 resetUI();
             }
+        } else if (result.error) {
+            console.error('進度查詢失敗:', result.error.message);
         }
     } catch (err) {
         console.error('檢查進度時發生錯誤:', err);

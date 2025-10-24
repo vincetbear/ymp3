@@ -1,8 +1,11 @@
 """
 Flask Web 應用 - 使用 pytubefix 下載 YouTube 影片/音訊
+優化版本：添加速率限制、改善錯誤處理、效能監控
 """
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, g
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from pytubefix import YouTube
 import os
 import threading
@@ -13,6 +16,8 @@ import subprocess
 import logging
 from logging.handlers import RotatingFileHandler
 from threading import Semaphore
+import psutil
+from functools import wraps
 
 # 導入配置和工具函數
 try:
@@ -72,6 +77,14 @@ app.config['MAX_CONTENT_LENGTH'] = config.MAX_FILE_SIZE
 
 CORS(app)
 
+# 設定速率限制
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
 # 設定下載資料夾 (使用絕對路徑)
 DOWNLOAD_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), 'downloads'))
 print(f'📁 下載目錄: {DOWNLOAD_FOLDER}')
@@ -117,6 +130,73 @@ download_tasks = {}
 
 # 並發下載限制
 download_semaphore = Semaphore(config.MAX_CONCURRENT_DOWNLOADS)
+
+# 統一錯誤回應格式
+def error_response(message, code='ERROR', status_code=400, details=None):
+    """
+    統一的錯誤回應格式
+    
+    Args:
+        message: 錯誤訊息
+        code: 錯誤代碼
+        status_code: HTTP 狀態碼
+        details: 額外的錯誤詳情
+    """
+    response = {
+        'success': False,
+        'error': {
+            'code': code,
+            'message': message
+        },
+        'request_id': g.get('request_id', None)
+    }
+    
+    if details:
+        response['error']['details'] = details
+    
+    return jsonify(response), status_code
+
+
+def success_response(data=None, message=None):
+    """
+    統一的成功回應格式
+    
+    Args:
+        data: 回應資料
+        message: 成功訊息
+    """
+    response = {
+        'success': True,
+        'request_id': g.get('request_id', None)
+    }
+    
+    if data is not None:
+        response['data'] = data
+    
+    if message:
+        response['message'] = message
+    
+    return jsonify(response)
+
+
+# 請求ID中介層
+@app.before_request
+def before_request():
+    """為每個請求生成唯一ID"""
+    g.request_id = str(uuid.uuid4())
+    g.start_time = datetime.now()
+
+
+@app.after_request
+def after_request(response):
+    """記錄請求資訊"""
+    if hasattr(g, 'start_time'):
+        duration = (datetime.now() - g.start_time).total_seconds()
+        app.logger.info(
+            f'[{g.request_id}] {request.method} {request.path} '
+            f'- {response.status_code} - {duration:.3f}s'
+        )
+    return response
 
 
 def convert_to_mp3(input_file, bitrate='192k'):
@@ -314,20 +394,31 @@ def set_security_headers(response):
 @app.errorhandler(404)
 def not_found(error):
     """404 錯誤處理"""
-    return jsonify({'error': '找不到資源'}), 404
+    return error_response('找不到資源', code='NOT_FOUND', status_code=404)
 
 
 @app.errorhandler(500)
 def internal_error(error):
     """500 錯誤處理"""
-    app.logger.error(f'伺服器錯誤: {error}')
-    return jsonify({'error': '伺服器內部錯誤'}), 500
+    app.logger.error(f'[{g.get("request_id", "unknown")}] 伺服器錯誤: {error}', exc_info=True)
+    return error_response('伺服器內部錯誤', code='INTERNAL_ERROR', status_code=500)
 
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
     """413 錯誤處理（請求實體過大）"""
-    return jsonify({'error': '檔案過大'}), 413
+    return error_response('檔案過大', code='FILE_TOO_LARGE', status_code=413)
+
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """速率限制錯誤處理"""
+    return error_response(
+        f'請求過於頻繁，請稍後再試',
+        code='RATE_LIMIT_EXCEEDED',
+        status_code=429,
+        details={'retry_after': e.description}
+    )
 
 
 # 健康檢查端點
@@ -348,7 +439,58 @@ def health_check():
     return jsonify(checks), status_code
 
 
+# 系統監控端點
+@app.route('/api/metrics')
+@limiter.exempt  # 監控端點不受速率限制
+def get_metrics():
+    """獲取系統效能指標"""
+    try:
+        # CPU 和記憶體使用
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        
+        # 磁碟空間
+        total, used, free = get_disk_space(DOWNLOAD_FOLDER)
+        
+        # 任務統計
+        task_stats = {
+            'total': len(download_tasks),
+            'pending': len([t for t in download_tasks.values() if t['status'] == 'pending']),
+            'downloading': len([t for t in download_tasks.values() if t['status'] == 'downloading']),
+            'converting': len([t for t in download_tasks.values() if t['status'] == 'converting']),
+            'completed': len([t for t in download_tasks.values() if t['status'] == 'completed']),
+            'error': len([t for t in download_tasks.values() if t['status'] == 'error'])
+        }
+        
+        metrics = {
+            'timestamp': datetime.now().isoformat(),
+            'system': {
+                'cpu_percent': psutil.cpu_percent(interval=0.1),
+                'memory_mb': memory_info.rss // (1024 * 1024),
+                'threads': threading.active_count()
+            },
+            'disk': {
+                'total_mb': total,
+                'used_mb': used,
+                'free_mb': free,
+                'usage_percent': round((used / total) * 100, 2) if total > 0 else 0
+            },
+            'tasks': task_stats,
+            'downloads': {
+                'folder': DOWNLOAD_FOLDER,
+                'file_count': len([f for f in os.listdir(DOWNLOAD_FOLDER) if os.path.isfile(os.path.join(DOWNLOAD_FOLDER, f))])
+            }
+        }
+        
+        return success_response(data=metrics)
+        
+    except Exception as e:
+        app.logger.error(f'獲取監控指標失敗: {e}', exc_info=True)
+        return error_response('無法獲取系統指標', code='METRICS_ERROR', status_code=500)
+
+
 @app.route('/api/info', methods=['POST'])
+@limiter.limit("30 per minute")  # 每分鐘最多 30 次
 def get_video_info():
     """獲取影片資訊"""
     try:
@@ -356,14 +498,14 @@ def get_video_info():
         url = data.get('url')
         
         if not url:
-            return jsonify({'error': '請提供影片網址'}), 400
+            return error_response('請提供影片網址', code='MISSING_URL', status_code=400)
         
         # 驗證 URL 安全性
         try:
             url = validate_youtube_url(url)
             url = clean_youtube_url(url)
         except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+            return error_response(str(e), code='INVALID_URL', status_code=400)
         
         # 建立 YouTube 物件
         yt = YouTube(url)
@@ -392,18 +534,19 @@ def get_video_info():
             'audio_bitrate': audio_stream.abr if audio_stream else None
         }
         
-        app.logger.info(f'獲取影片資訊成功: {yt.title}')
-        return jsonify(info)
+        app.logger.info(f'[{g.request_id}] 獲取影片資訊成功: {yt.title}')
+        return success_response(data=info)
         
     except ValueError as e:
-        app.logger.warning(f'URL 驗證失敗: {e}')
-        return jsonify({'error': str(e)}), 400
+        app.logger.warning(f'[{g.request_id}] URL 驗證失敗: {e}')
+        return error_response(str(e), code='INVALID_URL', status_code=400)
     except Exception as e:
-        app.logger.error(f'獲取影片資訊失敗: {e}', exc_info=True)
-        return jsonify({'error': '無法獲取影片資訊，請確認網址是否正確'}), 500
+        app.logger.error(f'[{g.request_id}] 獲取影片資訊失敗: {e}', exc_info=True)
+        return error_response('無法獲取影片資訊，請確認網址是否正確', code='INFO_FETCH_ERROR', status_code=500)
 
 
 @app.route('/api/download', methods=['POST'])
+@limiter.limit("10 per hour")  # 每小時最多 10 次下載
 def download_video():
     """開始下載任務"""
     try:
@@ -413,19 +556,19 @@ def download_video():
         quality = data.get('quality', 'best')      # best, 1080p, 720p, 480p, 360p
         
         if not url:
-            return jsonify({'error': '請提供影片網址'}), 400
+            return error_response('請提供影片網址', code='MISSING_URL', status_code=400)
         
         # 驗證 URL 安全性
         try:
             url = validate_youtube_url(url)
             url = clean_youtube_url(url)
         except ValueError as e:
-            app.logger.warning(f'下載請求 URL 無效: {e}')
-            return jsonify({'error': str(e)}), 400
+            app.logger.warning(f'[{g.request_id}] 下載請求 URL 無效: {e}')
+            return error_response(str(e), code='INVALID_URL', status_code=400)
         
         # 驗證下載類型
         if download_type not in ['video', 'audio']:
-            return jsonify({'error': '無效的下載類型'}), 400
+            return error_response('無效的下載類型', code='INVALID_TYPE', status_code=400)
         
         # 建立任務 ID
         task_id = str(uuid.uuid4())
@@ -439,10 +582,11 @@ def download_video():
             'status': 'pending',
             'progress': 0,
             'message': '準備下載...',
-            'created_at': datetime.now().isoformat()
+            'created_at': datetime.now().isoformat(),
+            'request_id': g.request_id
         }
         
-        app.logger.info(f'建立下載任務: task_id={task_id}, type={download_type}, quality={quality}')
+        app.logger.info(f'[{g.request_id}] 建立下載任務: task_id={task_id}, type={download_type}, quality={quality}')
         
         # 啟動背景執行緒
         thread = threading.Thread(
@@ -452,24 +596,31 @@ def download_video():
         thread.daemon = True
         thread.start()
         
-        return jsonify({
-            'task_id': task_id,
-            'message': '下載任務已建立'
-        })
+        return success_response(
+            data={'task_id': task_id},
+            message='下載任務已建立'
+        )
         
     except Exception as e:
-        app.logger.error(f'建立下載任務失敗: {e}', exc_info=True)
-        return jsonify({'error': '建立下載任務失敗'}), 500
+        app.logger.error(f'[{g.request_id}] 建立下載任務失敗: {e}', exc_info=True)
+        return error_response('建立下載任務失敗', code='TASK_CREATE_ERROR', status_code=500)
 
 
 @app.route('/api/progress/<task_id>')
+@limiter.limit("60 per minute")  # 輪詢進度每分鐘最多 60 次
 def get_progress(task_id):
     """獲取下載進度"""
+    # 驗證 task_id 格式
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        return error_response('無效的任務 ID', code='INVALID_TASK_ID', status_code=400)
+    
     if task_id not in download_tasks:
-        return jsonify({'error': '任務不存在'}), 404
+        return error_response('任務不存在', code='TASK_NOT_FOUND', status_code=404)
     
     task = download_tasks[task_id]
-    return jsonify(task)
+    return success_response(data=task)
 
 
 @app.route('/api/file/<task_id>')
@@ -556,6 +707,30 @@ def cleanup_old_files():
         app.logger.error(f'清理過程發生錯誤: {e}', exc_info=True)
 
 
+def cleanup_old_tasks():
+    """清理過期的任務記錄"""
+    try:
+        now = datetime.now()
+        expired_tasks = []
+        
+        for task_id, task in list(download_tasks.items()):
+            # 解析任務創建時間
+            created_at = datetime.fromisoformat(task['created_at'])
+            # 任務超過 2 小時就清理
+            if now - created_at > timedelta(hours=2):
+                expired_tasks.append(task_id)
+        
+        for task_id in expired_tasks:
+            del download_tasks[task_id]
+            app.logger.info(f'清理過期任務: {task_id}')
+        
+        if expired_tasks:
+            app.logger.info(f'清理 {len(expired_tasks)} 個過期任務')
+            
+    except Exception as e:
+        app.logger.error(f'清理任務時發生錯誤: {e}', exc_info=True)
+
+
 # 啟動時清理舊檔案
 cleanup_old_files()
 
@@ -565,6 +740,7 @@ def periodic_cleanup():
     while True:
         time.sleep(3600)  # 1 小時
         cleanup_old_files()
+        cleanup_old_tasks()
 
 cleanup_thread = threading.Thread(target=periodic_cleanup)
 cleanup_thread.daemon = True
