@@ -89,8 +89,8 @@ def download_video(url, output_path='downloads', quality='highest'):
     print(f'📹 下載影片模式')
     print(f'   畫質: {quality}')
     
-    # 建立 YouTube 物件
-    yt = YouTube(url)
+    # 建立 YouTube 物件 (使用 WEB 客戶端自動生成 PO Token 繞過 bot 檢測)
+    yt = YouTube(url, client='WEB')
     
     # 根據畫質選擇串流
     if quality == 'highest':
@@ -128,8 +128,8 @@ def download_audio(url, output_path='downloads', bitrate='192k'):
     print(f'🎵 下載音訊模式 (轉換為 MP3)')
     print(f'   位元率: {bitrate}')
     
-    # 建立 YouTube 物件
-    yt = YouTube(url)
+    # 建立 YouTube 物件 (使用 WEB 客戶端自動生成 PO Token 繞過 bot 檢測)
+    yt = YouTube(url, client='WEB')
     
     # 獲取最高品質音訊
     stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
@@ -161,7 +161,8 @@ def get_video_info(url):
     Returns:
         dict: 影片資訊
     """
-    yt = YouTube(url)
+    # 使用 WEB 客戶端自動生成 PO Token 繞過 bot 檢測
+    yt = YouTube(url, client='WEB')
     
     return {
         'title': yt.title,

@@ -308,9 +308,10 @@ def download_video_thread(task_id, url, download_type, quality):
             download_tasks[task_id]['status'] = 'downloading'
             download_tasks[task_id]['message'] = '正在下載...'
             
-            # 建立 YouTube 物件（移除 OAuth/po_token，使用預設方法）
+            # 建立 YouTube 物件（使用 WEB 客戶端自動生成 PO Token 繞過 bot 檢測）
             yt = YouTube(
                 url,
+                client='WEB',
                 on_progress_callback=progress_callback,
                 on_complete_callback=complete_callback
             )
@@ -507,8 +508,8 @@ def get_video_info():
         except ValueError as e:
             return error_response(str(e), code='INVALID_URL', status_code=400)
         
-        # 建立 YouTube 物件（移除 OAuth/po_token，使用預設方法）
-        yt = YouTube(url)
+        # 建立 YouTube 物件（使用 WEB 客戶端自動生成 PO Token 繞過 bot 檢測）
+        yt = YouTube(url, client='WEB')
         
         # 獲取可用的畫質選項
         video_streams = yt.streams.filter(progressive=True).order_by('resolution').desc()
