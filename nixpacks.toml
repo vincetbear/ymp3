@@ -1,10 +1,11 @@
 [phases.setup]
-nixPkgs = ["python39"]
+nixPkgs = ["python39", "nodejs"]
 
 [phases.install]
 cmds = [
     "apt-get update && apt-get install -y ffmpeg",
     "ffmpeg -version",
+    "node --version",
     "pip install -r requirements.txt",
     "chmod +x start.sh"
 ]

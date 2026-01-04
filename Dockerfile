@@ -2,9 +2,15 @@
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# 安裝 FFmpeg 和 Node.js (pytubefix WEB client 需要 Node.js 來生成 PO Token)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN ffmpeg -version
+RUN node --version
 
 COPY requirements.txt .
 
