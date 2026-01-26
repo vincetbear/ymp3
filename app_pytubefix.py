@@ -304,26 +304,41 @@ def download_video_thread(task_id, url, download_type, quality):
     """背景執行緒下載影片"""
     # 使用 Semaphore 限制並發下載
     with download_semaphore:
-        # 嘗試多個客戶端以避免 403 錯誤
-        clients_to_try = ['IOS', 'ANDROID', 'WEB']
+        # 嘗試多個策略以避免 403 錯誤
+        # 策略 1: WEB 客戶端 + 自動 PoToken (需要 Node.js)
+        # 策略 2: IOS 客戶端 (不需要 PoToken)
+        # 策略 3: ANDROID 客戶端 (不需要 PoToken)
+        strategies = [
+            {'name': 'WEB + PoToken', 'client': 'WEB', 'use_po_token': True},
+            {'name': 'IOS', 'client': 'IOS', 'use_po_token': False},
+            {'name': 'ANDROID', 'client': 'ANDROID', 'use_po_token': False},
+        ]
         last_error = None
         
-        for client in clients_to_try:
+        for strategy in strategies:
             try:
                 download_tasks[task_id]['status'] = 'downloading'
-                download_tasks[task_id]['message'] = f'正在使用 {client} 客戶端下載...'
+                download_tasks[task_id]['message'] = f'正在使用 {strategy["name"]} 策略下載...'
                 
-                app.logger.info(f'嘗試使用 {client} 客戶端下載 (task_id={task_id})')
+                app.logger.info(f'嘗試策略: {strategy["name"]} (task_id={task_id})')
                 
-                # 建立 YouTube 物件，使用 OAuth 認證避免 403 錯誤
-                yt = YouTube(
-                    url,
-                    client=client,
-                    use_oauth=True,
-                    allow_oauth_cache=True,
-                    on_progress_callback=progress_callback,
-                    on_complete_callback=complete_callback
-                )
+                # 建立 YouTube 物件
+                if strategy['use_po_token']:
+                    # WEB 客戶端使用自動 PoToken 生成 (需要 Node.js)
+                    yt = YouTube(
+                        url,
+                        'WEB',  # 使用位置參數啟用自動 PoToken
+                        on_progress_callback=progress_callback,
+                        on_complete_callback=complete_callback
+                    )
+                else:
+                    # IOS/ANDROID 客戶端
+                    yt = YouTube(
+                        url,
+                        client=strategy['client'],
+                        on_progress_callback=progress_callback,
+                        on_complete_callback=complete_callback
+                    )
                 
                 # 儲存 task_id 到 stream 物件
                 if download_type == 'video':
@@ -384,12 +399,12 @@ def download_video_thread(task_id, url, download_type, quality):
                 
             except Exception as e:
                 last_error = e
-                app.logger.warning(f'{client} 客戶端失敗: {e}')
+                app.logger.warning(f'{strategy["name"]} 策略失敗: {e}')
                 continue
         
-        # 所有客戶端都失敗
+        # 所有策略都失敗
         download_tasks[task_id]['status'] = 'error'
-        download_tasks[task_id]['message'] = f'所有客戶端都無法下載: {last_error}'
+        download_tasks[task_id]['message'] = f'下載失敗: {last_error}'
         app.logger.error(f'下載錯誤 (task_id={task_id}): {last_error}', exc_info=True)
 
 
@@ -526,29 +541,35 @@ def get_video_info():
         except ValueError as e:
             return error_response(str(e), code='INVALID_URL', status_code=400)
         
-        # 嘗試多個客戶端以避免 403 錯誤
-        clients_to_try = ['IOS', 'ANDROID', 'WEB']
+        # 嘗試多個策略以避免 403 錯誤
+        strategies = [
+            {'name': 'WEB + PoToken', 'client': 'WEB', 'use_po_token': True},
+            {'name': 'IOS', 'client': 'IOS', 'use_po_token': False},
+            {'name': 'ANDROID', 'client': 'ANDROID', 'use_po_token': False},
+        ]
         last_error = None
         yt = None
         
-        for client in clients_to_try:
+        for strategy in strategies:
             try:
-                yt = YouTube(
-                    url,
-                    client=client,
-                    use_oauth=True,
-                    allow_oauth_cache=True
-                )
+                if strategy['use_po_token']:
+                    # WEB 客戶端使用自動 PoToken 生成
+                    yt = YouTube(url, 'WEB')
+                else:
+                    # IOS/ANDROID 客戶端
+                    yt = YouTube(url, client=strategy['client'])
                 # 嘗試獲取標題來驗證連接是否成功
                 _ = yt.title
+                app.logger.info(f'{strategy["name"]} 策略成功獲取影片資訊')
                 break
             except Exception as e:
                 last_error = e
-                app.logger.warning(f'{client} 客戶端獲取資訊失敗: {e}')
+                app.logger.warning(f'{strategy["name"]} 策略獲取資訊失敗: {e}')
+                yt = None
                 continue
         
         if yt is None:
-            raise Exception(f'所有客戶端都無法獲取影片資訊: {last_error}')
+            raise Exception(f'無法獲取影片資訊: {last_error}')
         
         # 獲取可用的畫質選項
         video_streams = yt.streams.filter(progressive=True).order_by('resolution').desc()

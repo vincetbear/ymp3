@@ -89,20 +89,27 @@ def download_video(url, output_path='downloads', quality='highest'):
     print(f'📹 下載影片模式')
     print(f'   畫質: {quality}')
     
-    # 嘗試多個客戶端以避免 403 錯誤
-    clients_to_try = ['IOS', 'ANDROID', 'WEB']
+    # 嘗試多個策略以避免 403 錯誤
+    # 策略 1: WEB 客戶端 + 自動 PoToken (需要 Node.js)
+    # 策略 2: IOS 客戶端 (不需要 PoToken)
+    # 策略 3: ANDROID 客戶端 (不需要 PoToken)
+    strategies = [
+        {'name': 'WEB + PoToken', 'client': 'WEB', 'use_po_token': True},
+        {'name': 'IOS', 'client': 'IOS', 'use_po_token': False},
+        {'name': 'ANDROID', 'client': 'ANDROID', 'use_po_token': False},
+    ]
     last_error = None
     
-    for client in clients_to_try:
+    for strategy in strategies:
         try:
-            print(f'   嘗試使用 {client} 客戶端...')
-            # 建立 YouTube 物件，使用 OAuth 認證避免 403 錯誤
-            yt = YouTube(
-                url,
-                client=client,
-                use_oauth=True,
-                allow_oauth_cache=True
-            )
+            print(f'   嘗試策略: {strategy["name"]}...')
+            # 建立 YouTube 物件
+            if strategy['use_po_token']:
+                # WEB 客戶端使用自動 PoToken 生成
+                yt = YouTube(url, 'WEB')
+            else:
+                # IOS/ANDROID 客戶端
+                yt = YouTube(url, client=strategy['client'])
             
             # 根據畫質選擇串流
             if quality == 'highest':
@@ -129,11 +136,11 @@ def download_video(url, output_path='downloads', quality='highest'):
             
         except Exception as e:
             last_error = e
-            print(f'⚠️  {client} 客戶端失敗: {e}')
+            print(f'⚠️  {strategy["name"]} 策略失敗: {e}')
             continue
     
-    # 所有客戶端都失敗
-    raise Exception(f'所有客戶端都無法下載影片: {last_error}')
+    # 所有策略都失敗
+    raise Exception(f'所有下載策略都失敗: {last_error}')
 
 
 def download_audio(url, output_path='downloads', bitrate='192k'):
@@ -151,21 +158,25 @@ def download_audio(url, output_path='downloads', bitrate='192k'):
     print(f'🎵 下載音訊模式 (轉換為 MP3)')
     print(f'   位元率: {bitrate}')
     
-    # 嘗試多個客戶端以避免 403 錯誤
-    clients_to_try = ['IOS', 'ANDROID', 'WEB']
+    # 嘗試多個策略以避免 403 錯誤
+    strategies = [
+        {'name': 'WEB + PoToken', 'client': 'WEB', 'use_po_token': True},
+        {'name': 'IOS', 'client': 'IOS', 'use_po_token': False},
+        {'name': 'ANDROID', 'client': 'ANDROID', 'use_po_token': False},
+    ]
     last_error = None
     audio_file = None
     
-    for client in clients_to_try:
+    for strategy in strategies:
         try:
-            print(f'   嘗試使用 {client} 客戶端...')
-            # 建立 YouTube 物件，使用 OAuth 認證避免 403 錯誤
-            yt = YouTube(
-                url,
-                client=client,
-                use_oauth=True,
-                allow_oauth_cache=True
-            )
+            print(f'   嘗試策略: {strategy["name"]}...')
+            # 建立 YouTube 物件
+            if strategy['use_po_token']:
+                # WEB 客戶端使用自動 PoToken 生成
+                yt = YouTube(url, 'WEB')
+            else:
+                # IOS/ANDROID 客戶端
+                yt = YouTube(url, client=strategy['client'])
             
             # 獲取最高品質音訊
             stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
