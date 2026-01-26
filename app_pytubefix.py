@@ -304,74 +304,93 @@ def download_video_thread(task_id, url, download_type, quality):
     """背景執行緒下載影片"""
     # 使用 Semaphore 限制並發下載
     with download_semaphore:
-        try:
-            download_tasks[task_id]['status'] = 'downloading'
-            download_tasks[task_id]['message'] = '正在下載...'
-            
-            # 建立 YouTube 物件（使用預設 ANDROID_VR 客戶端，不需要額外的 PO Token）
-            yt = YouTube(
-                url,
-                on_progress_callback=progress_callback,
-                on_complete_callback=complete_callback
-            )
-            
-            # 儲存 task_id 到 stream 物件
-            if download_type == 'video':
-                # 影片模式
-                if quality == 'best':
-                    stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
-                else:
-                    # 特定解析度
-                    stream = yt.streams.filter(progressive=True, res=quality).first()
-                    if not stream:
-                        # 如果找不到指定解析度,使用最高畫質
+        # 嘗試多個客戶端以避免 403 錯誤
+        clients_to_try = ['IOS', 'ANDROID', 'WEB']
+        last_error = None
+        
+        for client in clients_to_try:
+            try:
+                download_tasks[task_id]['status'] = 'downloading'
+                download_tasks[task_id]['message'] = f'正在使用 {client} 客戶端下載...'
+                
+                app.logger.info(f'嘗試使用 {client} 客戶端下載 (task_id={task_id})')
+                
+                # 建立 YouTube 物件，使用 OAuth 認證避免 403 錯誤
+                yt = YouTube(
+                    url,
+                    client=client,
+                    use_oauth=True,
+                    allow_oauth_cache=True,
+                    on_progress_callback=progress_callback,
+                    on_complete_callback=complete_callback
+                )
+                
+                # 儲存 task_id 到 stream 物件
+                if download_type == 'video':
+                    # 影片模式
+                    if quality == 'best':
                         stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
-            else:
-                # 音訊模式 - 獲取最高品質音訊
-                stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
-            
-            # 設定 task_id
-            stream._task_id = task_id
-            
-            # 儲存影片資訊
-            download_tasks[task_id]['title'] = yt.title
-            download_tasks[task_id]['author'] = yt.author
-            download_tasks[task_id]['length'] = yt.length
-            
-            # 下載
-            file_path = stream.download(output_path=DOWNLOAD_FOLDER)
-            app.logger.info(f'下載完成: {os.path.basename(file_path)} ({format_file_size(os.path.getsize(file_path))})')
-            
-            # 如果是音訊,轉換為 MP3
-            if download_type == 'audio':
-                app.logger.info('音訊模式 - 開始轉換為 MP3')
-                download_tasks[task_id]['status'] = 'converting'
-                download_tasks[task_id]['message'] = '正在轉換為 MP3...'
-                download_tasks[task_id]['progress'] = 95
-                
-                original_file = file_path
-                file_path = convert_to_mp3(file_path)
-                
-                # 檢查是否成功轉換
-                if file_path.endswith('.mp3'):
-                    app.logger.info('MP3 轉換成功')
+                    else:
+                        # 特定解析度
+                        stream = yt.streams.filter(progressive=True, res=quality).first()
+                        if not stream:
+                            # 如果找不到指定解析度,使用最高畫質
+                            stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
                 else:
-                    app.logger.warning(f'轉換失敗，返回原始檔案 {os.path.splitext(file_path)[1]}')
-                    download_tasks[task_id]['message'] = f'下載完成 (轉換失敗，格式: {os.path.splitext(file_path)[1]})'
-            
-            # 下載完成
-            download_tasks[task_id]['status'] = 'completed'
-            download_tasks[task_id]['message'] = '下載完成'
-            download_tasks[task_id]['file_path'] = os.path.abspath(file_path)  # 使用絕對路徑
-            download_tasks[task_id]['filename'] = os.path.basename(file_path)
-            download_tasks[task_id]['progress'] = 100
-            
-            app.logger.info(f'任務完成: {download_tasks[task_id]["filename"]}')
-            
-        except Exception as e:
-            download_tasks[task_id]['status'] = 'error'
-            download_tasks[task_id]['message'] = str(e)
-            app.logger.error(f'下載錯誤 (task_id={task_id}): {e}', exc_info=True)
+                    # 音訊模式 - 獲取最高品質音訊
+                    stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
+                
+                if not stream:
+                    raise Exception('找不到可用的串流')
+                
+                # 設定 task_id
+                stream._task_id = task_id
+                
+                # 儲存影片資訊
+                download_tasks[task_id]['title'] = yt.title
+                download_tasks[task_id]['author'] = yt.author
+                download_tasks[task_id]['length'] = yt.length
+                
+                # 下載
+                file_path = stream.download(output_path=DOWNLOAD_FOLDER)
+                app.logger.info(f'下載完成: {os.path.basename(file_path)} ({format_file_size(os.path.getsize(file_path))})')
+                
+                # 如果是音訊,轉換為 MP3
+                if download_type == 'audio':
+                    app.logger.info('音訊模式 - 開始轉換為 MP3')
+                    download_tasks[task_id]['status'] = 'converting'
+                    download_tasks[task_id]['message'] = '正在轉換為 MP3...'
+                    download_tasks[task_id]['progress'] = 95
+                    
+                    original_file = file_path
+                    file_path = convert_to_mp3(file_path)
+                    
+                    # 檢查是否成功轉換
+                    if file_path.endswith('.mp3'):
+                        app.logger.info('MP3 轉換成功')
+                    else:
+                        app.logger.warning(f'轉換失敗，返回原始檔案 {os.path.splitext(file_path)[1]}')
+                        download_tasks[task_id]['message'] = f'下載完成 (轉換失敗，格式: {os.path.splitext(file_path)[1]})'
+                
+                # 下載完成
+                download_tasks[task_id]['status'] = 'completed'
+                download_tasks[task_id]['message'] = '下載完成'
+                download_tasks[task_id]['file_path'] = os.path.abspath(file_path)  # 使用絕對路徑
+                download_tasks[task_id]['filename'] = os.path.basename(file_path)
+                download_tasks[task_id]['progress'] = 100
+                
+                app.logger.info(f'任務完成: {download_tasks[task_id]["filename"]}')
+                return  # 成功，退出函數
+                
+            except Exception as e:
+                last_error = e
+                app.logger.warning(f'{client} 客戶端失敗: {e}')
+                continue
+        
+        # 所有客戶端都失敗
+        download_tasks[task_id]['status'] = 'error'
+        download_tasks[task_id]['message'] = f'所有客戶端都無法下載: {last_error}'
+        app.logger.error(f'下載錯誤 (task_id={task_id}): {last_error}', exc_info=True)
 
 
 @app.route('/')
@@ -507,8 +526,29 @@ def get_video_info():
         except ValueError as e:
             return error_response(str(e), code='INVALID_URL', status_code=400)
         
-        # 建立 YouTube 物件（使用預設 ANDROID_VR 客戶端，不需要額外的 PO Token）
-        yt = YouTube(url)
+        # 嘗試多個客戶端以避免 403 錯誤
+        clients_to_try = ['IOS', 'ANDROID', 'WEB']
+        last_error = None
+        yt = None
+        
+        for client in clients_to_try:
+            try:
+                yt = YouTube(
+                    url,
+                    client=client,
+                    use_oauth=True,
+                    allow_oauth_cache=True
+                )
+                # 嘗試獲取標題來驗證連接是否成功
+                _ = yt.title
+                break
+            except Exception as e:
+                last_error = e
+                app.logger.warning(f'{client} 客戶端獲取資訊失敗: {e}')
+                continue
+        
+        if yt is None:
+            raise Exception(f'所有客戶端都無法獲取影片資訊: {last_error}')
         
         # 獲取可用的畫質選項
         video_streams = yt.streams.filter(progressive=True).order_by('resolution').desc()

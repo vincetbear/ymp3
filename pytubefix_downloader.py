@@ -89,28 +89,51 @@ def download_video(url, output_path='downloads', quality='highest'):
     print(f'📹 下載影片模式')
     print(f'   畫質: {quality}')
     
-    # 建立 YouTube 物件（使用預設 ANDROID_VR 客戶端）
-    yt = YouTube(url)
+    # 嘗試多個客戶端以避免 403 錯誤
+    clients_to_try = ['IOS', 'ANDROID', 'WEB']
+    last_error = None
     
-    # 根據畫質選擇串流
-    if quality == 'highest':
-        # 最高畫質 (progressive - 包含音訊)
-        stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
-    else:
-        # 特定解析度
-        stream = yt.streams.filter(progressive=True, res=quality).first()
-        if not stream:
-            print(f'⚠️  找不到 {quality} 畫質,使用最高畫質')
-            stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
+    for client in clients_to_try:
+        try:
+            print(f'   嘗試使用 {client} 客戶端...')
+            # 建立 YouTube 物件，使用 OAuth 認證避免 403 錯誤
+            yt = YouTube(
+                url,
+                client=client,
+                use_oauth=True,
+                allow_oauth_cache=True
+            )
+            
+            # 根據畫質選擇串流
+            if quality == 'highest':
+                # 最高畫質 (progressive - 包含音訊)
+                stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
+            else:
+                # 特定解析度
+                stream = yt.streams.filter(progressive=True, res=quality).first()
+                if not stream:
+                    print(f'⚠️  找不到 {quality} 畫質,使用最高畫質')
+                    stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
+            
+            if not stream:
+                raise Exception('找不到可用的影片串流')
+            
+            print(f'   選擇串流: {stream}')
+            
+            # 下載
+            os.makedirs(output_path, exist_ok=True)
+            file_path = stream.download(output_path=output_path)
+            
+            print(f'✅ 影片下載完成: {os.path.basename(file_path)}')
+            return file_path
+            
+        except Exception as e:
+            last_error = e
+            print(f'⚠️  {client} 客戶端失敗: {e}')
+            continue
     
-    print(f'   選擇串流: {stream}')
-    
-    # 下載
-    os.makedirs(output_path, exist_ok=True)
-    file_path = stream.download(output_path=output_path)
-    
-    print(f'✅ 影片下載完成: {os.path.basename(file_path)}')
-    return file_path
+    # 所有客戶端都失敗
+    raise Exception(f'所有客戶端都無法下載影片: {last_error}')
 
 
 def download_audio(url, output_path='downloads', bitrate='192k'):
@@ -128,22 +151,47 @@ def download_audio(url, output_path='downloads', bitrate='192k'):
     print(f'🎵 下載音訊模式 (轉換為 MP3)')
     print(f'   位元率: {bitrate}')
     
-    # 建立 YouTube 物件（使用預設 ANDROID_VR 客戶端）
-    yt = YouTube(url)
+    # 嘗試多個客戶端以避免 403 錯誤
+    clients_to_try = ['IOS', 'ANDROID', 'WEB']
+    last_error = None
+    audio_file = None
     
-    # 獲取最高品質音訊
-    stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
+    for client in clients_to_try:
+        try:
+            print(f'   嘗試使用 {client} 客戶端...')
+            # 建立 YouTube 物件，使用 OAuth 認證避免 403 錯誤
+            yt = YouTube(
+                url,
+                client=client,
+                use_oauth=True,
+                allow_oauth_cache=True
+            )
+            
+            # 獲取最高品質音訊
+            stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
+            
+            if not stream:
+                raise Exception('找不到可用的音訊串流')
+            
+            print(f'   選擇串流: {stream}')
+            print(f'   音訊格式: {stream.mime_type}')
+            print(f'   音訊編碼: {stream.audio_codec}')
+            print(f'   位元率: {stream.abr}')
+            
+            # 下載音訊
+            os.makedirs(output_path, exist_ok=True)
+            audio_file = stream.download(output_path=output_path)
+            
+            print(f'✅ 音訊下載完成: {os.path.basename(audio_file)}')
+            break
+            
+        except Exception as e:
+            last_error = e
+            print(f'⚠️  {client} 客戶端失敗: {e}')
+            continue
     
-    print(f'   選擇串流: {stream}')
-    print(f'   音訊格式: {stream.mime_type}')
-    print(f'   音訊編碼: {stream.audio_codec}')
-    print(f'   位元率: {stream.abr}')
-    
-    # 下載音訊
-    os.makedirs(output_path, exist_ok=True)
-    audio_file = stream.download(output_path=output_path)
-    
-    print(f'✅ 音訊下載完成: {os.path.basename(audio_file)}')
+    if not audio_file:
+        raise Exception(f'所有客戶端都無法下載音訊: {last_error}')
     
     # 轉換為 MP3
     mp3_file = convert_to_mp3(audio_file, bitrate=bitrate)
@@ -161,19 +209,34 @@ def get_video_info(url):
     Returns:
         dict: 影片資訊
     """
-    # 使用預設 ANDROID_VR 客戶端
-    yt = YouTube(url)
+    # 嘗試多個客戶端以避免 403 錯誤
+    clients_to_try = ['IOS', 'ANDROID', 'WEB']
+    last_error = None
     
-    return {
-        'title': yt.title,
-        'author': yt.author,
-        'length': yt.length,
-        'views': yt.views,
-        'description': yt.description,
-        'thumbnail_url': yt.thumbnail_url,
-        'publish_date': str(yt.publish_date) if yt.publish_date else None,
-        'keywords': yt.keywords if hasattr(yt, 'keywords') else []
-    }
+    for client in clients_to_try:
+        try:
+            yt = YouTube(
+                url,
+                client=client,
+                use_oauth=True,
+                allow_oauth_cache=True
+            )
+            
+            return {
+                'title': yt.title,
+                'author': yt.author,
+                'length': yt.length,
+                'views': yt.views,
+                'description': yt.description,
+                'thumbnail_url': yt.thumbnail_url,
+                'publish_date': str(yt.publish_date) if yt.publish_date else None,
+                'keywords': yt.keywords if hasattr(yt, 'keywords') else []
+            }
+        except Exception as e:
+            last_error = e
+            continue
+    
+    raise Exception(f'無法獲取影片資訊: {last_error}')
 
 
 # 測試程式碼
