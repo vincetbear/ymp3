@@ -1,6 +1,7 @@
 """
 Flask Web 應用 - 使用 pytubefix 下載 YouTube 影片/音訊
 優化版本：添加速率限制、改善錯誤處理、效能監控
+支援 yt-dlp 作為後備下載引擎
 """
 from flask import Flask, render_template, request, jsonify, send_file, g
 from flask_cors import CORS
@@ -13,6 +14,15 @@ import uuid
 from datetime import datetime, timedelta
 import json
 import subprocess
+
+# 嘗試導入 yt-dlp 作為後備方案
+try:
+    import yt_dlp
+    YTDLP_AVAILABLE = True
+    print('✅ yt-dlp 可用作為後備下載引擎')
+except ImportError:
+    YTDLP_AVAILABLE = False
+    print('⚠️ yt-dlp 不可用，僅使用 pytubefix')
 import logging
 from logging.handlers import RotatingFileHandler
 from threading import Semaphore
@@ -402,7 +412,98 @@ def download_video_thread(task_id, url, download_type, quality):
                 app.logger.warning(f'{strategy["name"]} 策略失敗: {e}')
                 continue
         
-        # 所有策略都失敗
+        # pytubefix 所有策略都失敗，嘗試使用 yt-dlp 作為後備方案
+        if YTDLP_AVAILABLE:
+            try:
+                app.logger.info(f'嘗試使用 yt-dlp 後備方案 (task_id={task_id})')
+                download_tasks[task_id]['message'] = '正在使用 yt-dlp 後備方案下載...'
+                
+                # yt-dlp 選項
+                if download_type == 'audio':
+                    ydl_opts = {
+                        'format': 'bestaudio/best',
+                        'outtmpl': os.path.join(DOWNLOAD_FOLDER, '%(title)s.%(ext)s'),
+                        'postprocessors': [{
+                            'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3',
+                            'preferredquality': '192',
+                        }],
+                        'quiet': True,
+                        'no_warnings': True,
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        },
+                        'retries': 5,
+                        'socket_timeout': 30,
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['ios', 'android', 'web'],
+                            }
+                        },
+                    }
+                else:
+                    # 影片模式
+                    if quality == 'best':
+                        format_spec = 'best[ext=mp4]/best'
+                    else:
+                        height = quality.replace('p', '') if quality else '720'
+                        format_spec = f'best[height<={height}][ext=mp4]/best[height<={height}]'
+                    
+                    ydl_opts = {
+                        'format': format_spec,
+                        'outtmpl': os.path.join(DOWNLOAD_FOLDER, '%(title)s.%(ext)s'),
+                        'quiet': True,
+                        'no_warnings': True,
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        },
+                        'retries': 5,
+                        'socket_timeout': 30,
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['ios', 'android', 'web'],
+                            }
+                        },
+                    }
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    
+                    # 獲取下載的檔案路徑
+                    if download_type == 'audio':
+                        file_path = os.path.join(DOWNLOAD_FOLDER, ydl.prepare_filename(info).rsplit('.', 1)[0] + '.mp3')
+                    else:
+                        file_path = os.path.join(DOWNLOAD_FOLDER, ydl.prepare_filename(info))
+                    
+                    # 確認檔案存在
+                    if not os.path.exists(file_path):
+                        # 嘗試找到下載的檔案
+                        for ext in ['mp3', 'mp4', 'webm', 'mkv', 'm4a']:
+                            test_path = file_path.rsplit('.', 1)[0] + '.' + ext
+                            if os.path.exists(test_path):
+                                file_path = test_path
+                                break
+                    
+                    if os.path.exists(file_path):
+                        download_tasks[task_id]['title'] = info.get('title', 'Unknown')
+                        download_tasks[task_id]['author'] = info.get('uploader', info.get('channel', 'Unknown'))
+                        download_tasks[task_id]['length'] = info.get('duration', 0)
+                        download_tasks[task_id]['status'] = 'completed'
+                        download_tasks[task_id]['message'] = '下載完成 (yt-dlp)'
+                        download_tasks[task_id]['file_path'] = os.path.abspath(file_path)
+                        download_tasks[task_id]['filename'] = os.path.basename(file_path)
+                        download_tasks[task_id]['progress'] = 100
+                        
+                        app.logger.info(f'yt-dlp 下載完成: {os.path.basename(file_path)}')
+                        return
+                    else:
+                        raise Exception(f'檔案未找到: {file_path}')
+                        
+            except Exception as ytdlp_error:
+                app.logger.error(f'yt-dlp 後備方案也失敗: {ytdlp_error}')
+                last_error = f'pytubefix 和 yt-dlp 都失敗: {last_error} / {ytdlp_error}'
+        
+        # 所有方法都失敗
         download_tasks[task_id]['status'] = 'error'
         download_tasks[task_id]['message'] = f'下載失敗: {last_error}'
         app.logger.error(f'下載錯誤 (task_id={task_id}): {last_error}', exc_info=True)
@@ -569,7 +670,47 @@ def get_video_info():
                 continue
         
         if yt is None:
-            raise Exception(f'無法獲取影片資訊: {last_error}')
+            # pytubefix 失敗，嘗試 yt-dlp
+            if YTDLP_AVAILABLE:
+                try:
+                    app.logger.info('嘗試使用 yt-dlp 獲取影片資訊')
+                    ydl_opts = {
+                        'quiet': True,
+                        'no_warnings': True,
+                        'skip_download': True,
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        },
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['ios', 'android', 'web'],
+                            }
+                        },
+                    }
+                    
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        yt_info = ydl.extract_info(url, download=False)
+                        
+                        info = {
+                            'title': yt_info.get('title', 'Unknown'),
+                            'author': yt_info.get('uploader', yt_info.get('channel', 'Unknown')),
+                            'length': yt_info.get('duration', 0),
+                            'views': yt_info.get('view_count', 0),
+                            'thumbnail_url': yt_info.get('thumbnail', ''),
+                            'description': (yt_info.get('description', '')[:200] + '...') if len(yt_info.get('description', '')) > 200 else yt_info.get('description', ''),
+                            'publish_date': yt_info.get('upload_date', None),
+                            'resolutions': ['720p', '480p', '360p'],  # yt-dlp 預設支援的解析度
+                            'audio_bitrate': '128kbps'
+                        }
+                        
+                        app.logger.info(f'[{g.request_id}] yt-dlp 獲取影片資訊成功: {info["title"]}')
+                        return success_response(data=info)
+                        
+                except Exception as ytdlp_error:
+                    app.logger.error(f'yt-dlp 也無法獲取影片資訊: {ytdlp_error}')
+                    raise Exception(f'pytubefix 和 yt-dlp 都無法獲取影片資訊: {last_error} / {ytdlp_error}')
+            else:
+                raise Exception(f'無法獲取影片資訊: {last_error}')
         
         # 獲取可用的畫質選項
         video_streams = yt.streams.filter(progressive=True).order_by('resolution').desc()
