@@ -23,6 +23,51 @@ try:
 except ImportError:
     YTDLP_AVAILABLE = False
     print('⚠️ yt-dlp 不可用，僅使用 pytubefix')
+
+# 獲取 cookies 檔案路徑
+def get_cookies_path():
+    """
+    查找並返回 YouTube cookies 檔案路徑
+    支援兩種方式：
+    1. 環境變數 YOUTUBE_COOKIES (base64 編碼的 cookies 內容)
+    2. 本地檔案 youtube.com_cookies.txt 等
+    """
+    import base64
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 優先檢查環境變數 (用於雲端部署)
+    cookies_env = os.environ.get('YOUTUBE_COOKIES')
+    if cookies_env:
+        try:
+            # 解碼 base64 cookies
+            cookies_content = base64.b64decode(cookies_env).decode('utf-8')
+            cookies_path = os.path.join(base_dir, 'youtube_cookies_env.txt')
+            with open(cookies_path, 'w', encoding='utf-8') as f:
+                f.write(cookies_content)
+            print('✅ 從環境變數 YOUTUBE_COOKIES 載入 cookies')
+            return cookies_path
+        except Exception as e:
+            print(f'⚠️ 解碼環境變數 YOUTUBE_COOKIES 失敗: {e}')
+    
+    # 檢查本地檔案
+    possible_cookies = [
+        'youtube.com_cookies.txt',
+        'www.youtube.com_cookies.txt',
+        'youtube_cookies.txt',
+        'cookies.txt'
+    ]
+    
+    for cookie_file in possible_cookies:
+        cookie_path = os.path.join(base_dir, cookie_file)
+        if os.path.exists(cookie_path):
+            print(f'✅ 找到 cookies 檔案: {cookie_file}')
+            return cookie_path
+    
+    print('⚠️ 未找到 cookies 檔案，yt-dlp 可能會遭遇 bot 檢測')
+    return None
+
+# 初始化 cookies 路徑
+COOKIES_PATH = get_cookies_path()
 import logging
 from logging.handlers import RotatingFileHandler
 from threading import Semaphore
@@ -441,6 +486,9 @@ def download_video_thread(task_id, url, download_type, quality):
                             }
                         },
                     }
+                    # 添加 cookies 設定
+                    if COOKIES_PATH:
+                        ydl_opts['cookiefile'] = COOKIES_PATH
                 else:
                     # 影片模式
                     if quality == 'best':
@@ -465,6 +513,9 @@ def download_video_thread(task_id, url, download_type, quality):
                             }
                         },
                     }
+                    # 添加 cookies 設定
+                    if COOKIES_PATH:
+                        ydl_opts['cookiefile'] = COOKIES_PATH
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
@@ -687,6 +738,9 @@ def get_video_info():
                             }
                         },
                     }
+                    # 添加 cookies 設定以繞過 bot 檢測
+                    if COOKIES_PATH:
+                        ydl_opts['cookiefile'] = COOKIES_PATH
                     
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         yt_info = ydl.extract_info(url, download=False)
